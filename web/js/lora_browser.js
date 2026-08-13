@@ -21,7 +21,7 @@ function shortName(name) {
   return name.split(/[\\/]/).at(-1)?.replace(/\.safetensors$/i, "") || name;
 }
 
-export function openLoraBrowser({store, models}) {
+export function openLoraBrowser({store, models, refreshModels, showError}) {
   const view = modal("ADD LORA");
   const tools = el("div", "k2-browser-tools");
   let mode = "all";
@@ -31,9 +31,10 @@ export function openLoraBrowser({store, models}) {
   const all = button("All", "k2-btn k2-btn-accent");
   const favoriteFilter = button("Favorites", "k2-btn k2-btn-quiet");
   const recentFilter = button("Recent", "k2-btn k2-btn-quiet");
+  const rescan = button("↻ Rescan", "k2-btn k2-btn-quiet");
   const status = el("p", "k2-note", "Choose a LoRA. It remains a normal ComfyUI model patch and is never baked into the base model.");
   const list = el("div", "k2-browser-list");
-  tools.append(search, all, favoriteFilter, recentFilter);
+  tools.append(search, all, favoriteFilter, recentFilter, rescan);
   view.body.append(tools, status, list);
 
   function setMode(value) {
@@ -87,6 +88,12 @@ export function openLoraBrowser({store, models}) {
   all.onclick = () => setMode("all");
   favoriteFilter.onclick = () => setMode("favorites");
   recentFilter.onclick = () => setMode("recent");
+  rescan.onclick = async () => {
+    rescan.disabled=true;status.textContent="Rescanning ComfyUI LoRA folders…";
+    try{await refreshModels?.();status.textContent=`Found ${(models.loras||[]).length} LoRAs.`;render();}
+    catch(error){status.textContent="LoRA rescan failed.";showError?.(error);}
+    finally{rescan.disabled=false;}
+  };
   render();
   document.body.append(view.overlay);
   search.focus();

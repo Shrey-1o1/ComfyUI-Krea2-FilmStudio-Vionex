@@ -6,6 +6,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 import json
 import math
+from pathlib import PurePosixPath
 from typing import Any
 
 import comfy.samplers
@@ -58,15 +59,31 @@ def _mapping(data: dict[str, Any], key: str) -> dict[str, Any]:
 
 
 def _filename(folder: str, value: str, label: str, required: bool = True) -> str:
-    value = str(value or "")
+    value = str(value or "").strip()
     if not value:
         if required:
             raise ValueError(f"Select a {label} in KREA 2 · One Node Settings.")
         return ""
-    if value not in folder_paths.get_filename_list(folder):
+    listed = folder_paths.get_filename_list(folder)
+
+    def normalized(name: str) -> str:
+        return PurePosixPath(str(name).replace("\\", "/")).as_posix().casefold()
+
+    wanted = normalized(value)
+    matches = [name for name in listed if normalized(name) == wanted]
+    if not matches:
+        wanted_basename = PurePosixPath(wanted).name
+        matches = [name for name in listed if PurePosixPath(normalized(name)).name == wanted_basename]
+    if not matches:
         raise ValueError(f"Selected {label} was not found in models/{folder}: {value}")
-    folder_paths.get_full_path_or_raise(folder, value)
-    return value
+    if len(matches) > 1:
+        raise ValueError(
+            f"Selected {label} is ambiguous in models/{folder}: {value}. "
+            "Choose it again from the refreshed Film Studio list."
+        )
+    resolved = matches[0]
+    folder_paths.get_full_path_or_raise(folder, resolved)
+    return resolved
 
 
 @dataclass(frozen=True)

@@ -1,10 +1,10 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
-import { buildNodeUI } from "./js/ui.js?v=film-studio-17";
+import { buildNodeUI } from "./js/ui.js?v=film-studio-18";
 
 const styleId="krea2-one-node-style";
 if(!document.getElementById(styleId)){
-  const link=document.createElement("link");link.id=styleId;link.rel="stylesheet";link.href=`${new URL("./css/krea2_one_node.css",import.meta.url).href}?v=film-studio-17`;document.head.append(link);
+  const link=document.createElement("link");link.id=styleId;link.rel="stylesheet";link.href=`${new URL("./css/krea2_one_node.css",import.meta.url).href}?v=film-studio-18`;document.head.append(link);
 }
 
 const controllers=new Map();

@@ -1202,6 +1202,12 @@ select.k2-input {
   margin-bottom: 9px;
 }
 
+.k2-settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
 .k2-lora-row {
   display: grid;
   grid-template-columns: minmax(180px, 2fr) .65fr .65fr .6fr 34px;
@@ -1293,7 +1299,7 @@ select.k2-input {
 
 .k2-browser-tools {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) auto auto auto;
+  grid-template-columns: minmax(220px, 1fr) auto auto auto auto;
   gap: 6px;
   margin-bottom: 10px;
 }

@@ -98,6 +98,8 @@ Click **+ Add LoRA** to add any number of dynamic rows. Each row has:
 
 The main-panel button opens a searchable browser with recent and favorite lists. Active LoRAs appear as removable chips above the prompt. Trigger phrases are read locally from safetensors metadata when present.
 
+Both the LoRA browser and Settings include **Rescan LoRA folders**. Saved selections are resolved case-insensitively across Windows/POSIX separators and by a unique filename, so moving a LoRA between subfolders does not invalidate an otherwise unambiguous selection. Common Civitai filenames for the two managed Film LoRAs are recognized without requiring users to rename them.
+
 The provider emits one native `LoraLoader` per enabled row. LoRAs stay as model patches and are not baked into the base model. Changing a row changes the serialized graph configuration and invalidates the relevant native expansion.
 
 ## Settings and serialization

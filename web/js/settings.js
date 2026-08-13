@@ -3,8 +3,13 @@ import {button, el, field, modal, number, section, select, toggle} from "./compo
 function loraRow(store, item, index, models, render) {
   const row = el("div", "k2-lora-row");
   const choose = select(["", ...(models.loras || [])], item.name || "", value => {
-    const list = [...(store.get("loras") || [])]; list[index] = {...list[index], name:value}; store.set("loras", list);
+    const list = [...(store.get("loras") || [])];
+    const wasManaged=!!list[index]?.managed;
+    list[index] = {...list[index], name:value, ...(wasManaged?{managed:false,enabled:true}:{})};
+    store.set("loras", list);
+    if(wasManaged)render();
   });
+  choose.title = item.managed ? "Choose a different LoRA; the managed Film LoRA will be restored on the next library scan." : "Choose any LoRA found by ComfyUI.";
   const modelStrength = number(item.strength_model ?? 1, -10, 10, .05, value => {
     const list = [...store.get("loras")]; list[index] = {...list[index], strength_model:value}; store.set("loras", list);
   });
@@ -17,7 +22,6 @@ function loraRow(store, item, index, models, render) {
   const remove = button("×", "k2-btn k2-btn-danger");
   remove.onclick = () => { const list = [...store.get("loras")]; list.splice(index, 1); store.set("loras", list); render(); };
   if (item.managed) {
-    choose.disabled = true;
     enabled.querySelector("input").disabled = true;
     enabled.querySelector(".k2-toggle-label").textContent = "Managed · On";
     remove.disabled = true;
@@ -94,8 +98,15 @@ export function openSettings({store, models, refreshModels, syncSockets, showErr
     const list = el("div", "k2-lora-list");
     (store.get("loras") || []).forEach((item, index) => list.append(loraRow(store, item, index, models, render)));
     const add = button("+ Add LoRA", "k2-btn k2-btn-accent");
-    add.onclick = () => { store.set("loras", [...(store.get("loras") || []), {name:"",strength_model:1,strength_clip:1,enabled:true}]); render(); };
-    loras.append(list, add);
+    add.onclick = () => { store.set("loras", [...(store.get("loras") || []), {name:(models.loras||[])[0]||"",strength_model:1,strength_clip:1,enabled:true}]); render(); };
+    const rescan = button("↻ Rescan LoRA folders", "k2-btn k2-btn-quiet");
+    rescan.onclick = async () => {
+      rescan.disabled=true;rescan.textContent="Scanning…";
+      try{await refreshModels();render();}catch(error){showError(error);}
+      finally{rescan.disabled=false;rescan.textContent="↻ Rescan LoRA folders";}
+    };
+    if(!(models.loras||[]).length)list.append(el("p","k2-note","No LoRAs are registered by ComfyUI. Place files in models/loras, then use Rescan LoRA folders."));
+    const actions=el("div","k2-settings-actions");actions.append(add,rescan);loras.append(list,actions);
 
     const prefs = section("Studio preferences");
     prefs.append(

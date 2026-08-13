@@ -3,11 +3,11 @@ import { api } from "../../../scripts/api.js";
 import { kreaApi } from "./api.js";
 import { button, el, field, modal, number, select, setOptions, stepper, toggle } from "./components.js";
 import { openGallery } from "./gallery.js";
-import { openLoraBrowser } from "./lora_browser.js";
+import { openLoraBrowser } from "./lora_browser.js?v=film-studio-18";
 import { openPromptHistory, rememberPrompt } from "./prompt_history.js";
 import { openPromptStructure } from "./prompt_structure.js?v=film-studio-9";
-import { openSettings } from "./settings.js?v=film-studio-17";
-import { dimensionsFor, FILM_FORMATS, metadataSnapshot, parseState, RESOLUTION_PRESETS, StateStore } from "./state.js?v=film-studio-17";
+import { openSettings } from "./settings.js?v=film-studio-18";
+import { dimensionsFor, FILM_FORMATS, metadataSnapshot, parseState, RESOLUTION_PRESETS, StateStore } from "./state.js?v=film-studio-18";
 
 const MIN_NODE_WIDTH = 900;
 const MIN_UI_HEIGHT = 420;
@@ -15,6 +15,19 @@ const SOCKET_TYPES = {prompt:"STRING",image:"IMAGE",image_2:"IMAGE",model:"MODEL
 
 function hasConnectedInput(node, name) {
   return (node.inputs || []).some(input => input.name === name && input.link != null);
+}
+
+function normalizedModelName(name) {
+  return String(name || "").replaceAll("\\", "/").replace(/^\.\//, "").toLowerCase();
+}
+
+function resolveModelName(name, available) {
+  if (!name) return "";
+  const exact=(available || []).find(item=>normalizedModelName(item)===normalizedModelName(name));
+  if(exact)return exact;
+  const basename=normalizedModelName(name).split("/").at(-1);
+  const matches=(available || []).filter(item=>normalizedModelName(item).split("/").at(-1)===basename);
+  return matches.length===1?matches[0]:name;
 }
 
 function preserveNodeSize(node, size=node.size, duration=1800) {
@@ -308,6 +321,8 @@ export function buildNodeUI(node, configWidget) {
     preserveOrSelect("scheduler",data.schedulers,"simple");
     preserveOrSelect("refinement.sampler",data.samplers,store.get("sampler"));
     preserveOrSelect("refinement.scheduler",data.schedulers,store.get("scheduler"));
+    const resolvedLoras=(store.get("loras")||[]).map(item=>({...item,name:resolveModelName(item.name,data.loras)}));
+    if(JSON.stringify(resolvedLoras)!==JSON.stringify(store.get("loras")||[]))store.set("loras",resolvedLoras);
     const managed=[...(data.suggested?.managed_loras||[])];
     if(managed.length){const loras=[...(store.get("loras")||[])];let changed=false;managed.forEach(name=>{const strength=/cinematic_movie_still/i.test(name)?.8:1;let item=loras.find(row=>row.name===name);if(!item){item={name,strength_model:strength,strength_clip:strength,enabled:true,managed:true};loras.push(item);changed=true;}else if(item.enabled===false||!item.managed||Number(item.strength_model)!==strength||Number(item.strength_clip)!==strength){item.enabled=true;item.managed=true;item.strength_model=strength;item.strength_clip=strength;changed=true;}});if(changed)store.set("loras",loras);}
     setOptions(styleSelect,[{label:"No style — use prompt only",value:""},...models.styles.map(item=>({label:item.label,value:item.value}))],store.get("cinematic_style")||"");renderStyleDetails();
@@ -316,7 +331,7 @@ export function buildNodeUI(node, configWidget) {
     return data;
   }
   function openSettingsView(){openSettings({store,models,refreshModels:()=>refreshModels(true),syncSockets:()=>syncSockets(node,store),showError});}
-  settingsButton.onclick=openSettingsView;addLora.onclick=()=>openLoraBrowser({store,models});
+  settingsButton.onclick=openSettingsView;addLora.onclick=()=>openLoraBrowser({store,models,refreshModels:()=>refreshModels(true),showError});
   galleryButton.onclick=()=>openGallery({sessionItems,loadConfig:config=>store.replace(config),removeSession:item=>{const i=sessionItems.indexOf(item);if(i>=0)sessionItems.splice(i,1);},showError});
   promptStructureButton.onclick=()=>openPromptStructure();
   discover.onclick=()=>discoverPrompt(store);

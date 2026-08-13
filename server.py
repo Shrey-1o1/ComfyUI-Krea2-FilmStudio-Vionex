@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import struct
 import subprocess
@@ -34,6 +35,11 @@ MANAGED_FILES = (
         "folder": "loras",
         "subfolder": "Krea 2",
         "filename": "canon_krea2.safetensors",
+        "aliases": (
+            r"canon.*(?:krea.?2|ultra.?real).*\.safetensors$",
+            r"(?:krea.?2|ultra.?real).*canon.*\.safetensors$",
+            r"ultra.?real.*krea.?2.*\.safetensors$",
+        ),
         "url": "https://civitai.com/api/download/models/3134717",
         "sha256": "3295DEC59AB1195631FE9B3DD3493BA9C1546056DA86179CC3119C4B029420CE",
     },
@@ -42,6 +48,10 @@ MANAGED_FILES = (
         "folder": "loras",
         "subfolder": "Krea 2",
         "filename": "cinematic_movie_still_krea2.safetensors",
+        "aliases": (
+            r"cinematic.*movie.*still.*krea.?2.*\.safetensors$",
+            r"krea.?2.*cinematic.*movie.*still.*\.safetensors$",
+        ),
         "url": "https://civitai.com/api/download/models/3206785",
         "sha256": "94A23A044D718FF050E3CA595BB9840EDD93384FB6ED86DAE13FDFA1C2EE5B4E",
     },
@@ -102,10 +112,17 @@ def _listed(folder: str) -> list[str]:
 
 def _installed_asset(spec: dict[str, str]) -> Path | None:
     for name in _listed(spec["folder"]):
-        if Path(name.replace("\\", "/")).name.lower() == spec["filename"].lower():
+        if _asset_name_matches(spec, name):
             path = folder_paths.get_full_path_or_raise(spec["folder"], name)
             return Path(path)
     return None
+
+
+def _asset_name_matches(spec: dict[str, Any], name: str) -> bool:
+    basename = Path(str(name).replace("\\", "/")).name.casefold()
+    if basename == spec["filename"].casefold():
+        return True
+    return any(re.search(pattern, basename, re.IGNORECASE) for pattern in spec.get("aliases", ()))
 
 
 async def _download_managed_file(session: ClientSession, spec: dict[str, str]) -> dict[str, Any]:
@@ -173,10 +190,8 @@ def _model_payload() -> dict[str, Any]:
         (name for name in values if Path(name.replace("\\", "/")).name.lower() == filename.lower()), ""
     )
     recommended_loras = [
-        name for name in (
-            by_basename(loras, "canon_krea2.safetensors"),
-            by_basename(loras, "cinematic_movie_still_krea2.safetensors"),
-        ) if name
+        name for spec in MANAGED_FILES[:2]
+        if (name := next((candidate for candidate in loras if _asset_name_matches(spec, candidate)), ""))
     ]
     return {
         "diffusion_models": models,
