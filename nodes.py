@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 import secrets
 from typing import Any
@@ -14,6 +15,9 @@ from comfy_execution.graph_utils import is_link
 from .config import parse_config
 from .providers import Krea2Provider
 from .settings import default_config
+
+
+LOGGER = logging.getLogger("Krea2FilmStudio")
 
 
 class Krea2ReferenceDownscale:
@@ -179,6 +183,16 @@ class Krea2OneNode:
             need_clip=not (external.get("clip") and is_link(raw_inputs.get("clip"))),
             need_vae=not (external.get("vae") and is_link(raw_inputs.get("vae"))),
             seed=seed,
+        )
+        LOGGER.info(
+            "Krea 2 Film Studio: queue node=%s mode=%s resolution=%sx%s seed=%s backend=%s refinement=%s.",
+            unique_id,
+            parsed.mode.upper(),
+            parsed.width,
+            parsed.height,
+            parsed.seed,
+            "RES4LYF recommended" if parsed.data["res4lyf"].get("enabled", True) else "native KSampler",
+            "on" if parsed.data["refinement"].get("enabled") else "off",
         )
         usable = {
             "unique_id": unique_id,

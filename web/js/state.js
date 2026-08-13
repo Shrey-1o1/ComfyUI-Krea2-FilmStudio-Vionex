@@ -1,4 +1,5 @@
 export const RESOLUTION_PRESETS = [
+  ["Optimal Film 16:9 · 1928 × 1088", 1928, 1088],
   ["Square Frame · 1024 × 1024", 1024, 1024],
   ["Academy Portrait · 832 × 1216", 832, 1216],
   ["Photo Landscape · 1216 × 832", 1216, 832],
@@ -31,10 +32,27 @@ export const ASPECTS = {
 
 const clone = value => JSON.parse(JSON.stringify(value));
 
+export const DEFAULT_FILM_NEGATIVE = "low quality, blurry, pixelated, bad anatomy, deformed body, extra limbs, malformed hands, extra fingers, distorted face, asymmetrical eyes, duplicate subjects, warped background, incorrect perspective, cropped limbs, plastic skin, unrealistic lighting, oversaturated, text, watermark, logo, CGI, cartoon, motion blur, flicker, jitter, morphing, temporal inconsistency";
+
 export function parseState(raw) {
   try {
     const value = JSON.parse(raw || "{}");
-    return value && typeof value === "object" ? value : {};
+    if (!value || typeof value !== "object") return {};
+    if (Number(value.version || 1) < 2) {
+      value.version = 2;
+      if (!String(value.negative_prompt || "").trim()) value.negative_prompt = DEFAULT_FILM_NEGATIVE;
+      if (!value.custom_resolution && Number(value.width) === 1024 && Number(value.height) === 1024) {
+        Object.assign(value, {width:1928,height:1088,aspect_ratio:"16:9",megapixels:2});
+      }
+      if (value.res4lyf?.enabled !== false) {
+        value.refinement = {...(value.refinement || {}), enabled:true};
+      }
+      if (!value.vae_decode || value.vae_decode.mode === "auto") {
+        value.vae_decode = {...(value.vae_decode || {}),mode:"tiled",tile_size:256,overlap:64};
+      }
+    }
+    value.enhancer = {...(value.enhancer || {}),enabled:false};
+    return value;
   } catch (_) { return {}; }
 }
 
@@ -96,9 +114,10 @@ export function metadataSnapshot(state, usedSeed) {
     seed: usedSeed ?? state.seed, width: state.width, height: state.height,
     steps: state.steps, cfg: state.cfg, sampler: state.sampler,
     scheduler: state.scheduler, denoise: state.mode === "i2i" ? state.i2i?.denoise : state.denoise,
+    sampling_backend: state.res4lyf?.enabled !== false ? "RES4LYF recommended" : "Native KSampler",
     model: state.model, clip: state.clip, vae: state.vae,
     loras: (state.loras || []).filter(item => item.enabled !== false),
-    refinement: state.refinement, enhancer: state.enhancer,
+    refinement: state.refinement,
     config: clone(state),
   };
 }

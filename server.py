@@ -150,6 +150,20 @@ async def _ensure_control_nodes() -> dict[str, Any]:
     return {"id": "control_nodes", "status": "downloaded", "path": str(target), "changed": True, "restart_required": True}
 
 
+async def _ensure_res4lyf_nodes() -> dict[str, Any]:
+    target = Path(__file__).resolve().parent.parent / "RES4LYF"
+    if target.is_dir():
+        return {"id": "res4lyf_nodes", "status": "installed", "path": str(target), "changed": False}
+    process = await asyncio.create_subprocess_exec(
+        "git", "clone", "--depth", "1", "https://github.com/ClownsharkBatwing/RES4LYF", str(target),
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+    )
+    _stdout, stderr = await process.communicate()
+    if process.returncode:
+        raise RuntimeError(f"RES4LYF node install failed: {stderr.decode(errors='replace').strip()}")
+    return {"id": "res4lyf_nodes", "status": "downloaded", "path": str(target), "changed": True, "restart_required": True}
+
+
 def _model_payload() -> dict[str, Any]:
     models = _listed("diffusion_models")
     clips = _listed("text_encoders")
@@ -218,6 +232,10 @@ async def ensure_assets(_request: web.Request) -> web.Response:
                     errors.append(str(exc))
         try:
             results.append(await _ensure_control_nodes())
+        except (OSError, RuntimeError) as exc:
+            errors.append(str(exc))
+        try:
+            results.append(await _ensure_res4lyf_nodes())
         except (OSError, RuntimeError) as exc:
             errors.append(str(exc))
         changed = any(item.get("changed") for item in results)

@@ -59,6 +59,7 @@ export function openSettings({store, models, refreshModels, syncSockets, showErr
       assetRow("Cinematic Movie Still", "Managed LoRA · always enabled", "https://civitai.red/models/2840790/cinematic-movie-still", managedNames.some(name=>/cinematic_movie_still_krea2\.safetensors$/i.test(name))),
       assetRow("KREA Depth Control", "Required depth LoRA", "https://huggingface.co/Patil/Krea-2-depth-controlnet/tree/main", !!models.suggested?.control_lora),
       assetRow("KREA ControlNet nodes", "Native control workflow", "https://github.com/facok/comfyui-krea2-controlnet", models.capabilities?.control!==false),
+      assetRow("RES4LYF", "Recommended two-pass sampler engine", "https://github.com/ClownsharkBatwing/RES4LYF", models.capabilities?.res4lyf!==false),
       assetRow("Wan 2.1 VAE", "Default Film Studio decoder", "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/blob/main/split_files/vae/wan_2.1_vae.safetensors", /wan_2\.1_vae\.safetensors$/i.test(models.suggested?.vae||"")),
     );
     assets.append(assetList);
@@ -73,6 +74,21 @@ export function openSettings({store, models, refreshModels, syncSockets, showErr
       field("ENCODER PLACEMENT", select(["default","cpu"], store.get("clip_device"), value => store.set("clip_device", value))),
     );
     modelSection.append(grid);
+
+    const sampling = section("Sampling engine");
+    const recommended = toggle(
+      "Use RES4LYF recommended samplers (Recommended)",
+      store.get("res4lyf.enabled") !== false,
+      value => { store.set("res4lyf.enabled", value); render(); },
+    );
+    sampling.append(recommended);
+    if (models.capabilities?.res4lyf === false) {
+      sampling.append(el("p", "k2-error", "RES4LYF is not active. Install it and restart ComfyUI, or turn this option off to use native KSampler."));
+    } else if (store.get("res4lyf.enabled") !== false) {
+      sampling.append(el("p", "k2-note", "Pass 1 uses linear/euler with beta. When Refinement is enabled, pass 2 uses exponential/res_4s_munthe-kaas with kl_optimal and the Advanced Film Controls values for steps, CFG, and denoise. Eta 0.50, Standard mode, and BongMath remain fixed."));
+    } else {
+      sampling.append(el("p", "k2-note", "Native ComfyUI KSampler is active. Configure its sampler, scheduler, steps, CFG, and optional refinement in the main studio panel."));
+    }
 
     const loras = section("LoRAs");
     const list = el("div", "k2-lora-list");
@@ -101,26 +117,7 @@ export function openSettings({store, models, refreshModels, syncSockets, showErr
       prefs.append(tiles);
     }
 
-    const enhancer = section("Local scene writer");
-    if (models.capabilities?.prompt_enhancer === false) {
-      enhancer.append(el("p", "k2-note", "Unavailable: this ComfyUI build did not register the local TextGenerate node."));
-    } else {
-      enhancer.append(
-        toggle("Enhancer enabled", store.get("enhancer.enabled"), value => store.set("enhancer.enabled", value)),
-        field("Behavior", select(["light","balanced","detailed"], store.get("enhancer.behavior"), value=>store.set("enhancer.behavior",value))),
-      );
-      const enhanceGrid = el("div", "k2-settings-grid");
-      enhanceGrid.append(
-        field("Max length", number(store.get("enhancer.max_length"),32,2048,16,v=>store.set("enhancer.max_length",v))),
-        field("Temperature", number(store.get("enhancer.temperature"),0,2,.05,v=>store.set("enhancer.temperature",v))),
-        field("Top K", number(store.get("enhancer.top_k"),1,1000,1,v=>store.set("enhancer.top_k",v))),
-        field("Top P", number(store.get("enhancer.top_p"),0,1,.01,v=>store.set("enhancer.top_p",v))),
-        field("Repetition penalty", number(store.get("enhancer.repetition_penalty"),.1,4,.05,v=>store.set("enhancer.repetition_penalty",v))),
-        field("Enhancer seed", number(store.get("enhancer.seed"),0,Number.MAX_SAFE_INTEGER,1,v=>store.set("enhancer.seed",v))),
-      );
-      enhancer.append(enhanceGrid, toggle("Thinking", store.get("enhancer.thinking"), value=>store.set("enhancer.thinking",value)));
-    }
-    view.body.append(creator, assets, modelSection, loras, prefs, enhancer);
+    view.body.append(creator, assets, modelSection, sampling, loras, prefs);
   };
   refresh.onclick = async () => { refresh.disabled = true; try { await refreshModels(); render(); } catch(error) { showError(error); } finally { refresh.disabled = false; } };
   render(); document.body.append(view.overlay);

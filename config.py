@@ -12,7 +12,7 @@ import comfy.samplers
 import folder_paths
 
 from .resolution import validate_dimensions
-from .settings import DEFAULT_CONFIG
+from .settings import DEFAULT_CONFIG, DEFAULT_FILM_NEGATIVE
 from .styles import CINEMATIC_STYLES
 
 
@@ -97,6 +97,26 @@ def parse_config(raw: str, *, need_model: bool, need_clip: bool, need_vae: bool,
     if not isinstance(incoming, dict):
         raise ValueError("KREA 2 · One Node configuration must be a JSON object.")
 
+    incoming_version = int(incoming.get("version", 1) or 1)
+    if incoming_version < 2:
+        incoming = deepcopy(incoming)
+        incoming["version"] = 2
+        if not str(incoming.get("negative_prompt", "")).strip():
+            incoming["negative_prompt"] = DEFAULT_FILM_NEGATIVE
+        if (
+            incoming.get("custom_resolution", False) is False
+            and int(incoming.get("width", 1024) or 1024) == 1024
+            and int(incoming.get("height", 1024) or 1024) == 1024
+        ):
+            incoming.update(width=1928, height=1088, aspect_ratio="16:9", megapixels=2.0)
+        if isinstance(incoming.get("res4lyf"), dict) and incoming["res4lyf"].get("enabled", True):
+            refinement = incoming.setdefault("refinement", {})
+            if isinstance(refinement, dict):
+                refinement["enabled"] = True
+        decode = incoming.setdefault("vae_decode", {})
+        if isinstance(decode, dict) and decode.get("mode", "auto") == "auto":
+            decode.update(mode="tiled", tile_size=256, overlap=64)
+
     data = _merge(DEFAULT_CONFIG, incoming)
     mode = str(data.get("mode", "t2i")).lower()
     if mode not in {"t2i", "i2i", "control"}:
@@ -136,7 +156,11 @@ def parse_config(raw: str, *, need_model: bool, need_clip: bool, need_vae: bool,
     if data["scheduler"] not in schedulers:
         raise ValueError(f"Scheduler is not available in this ComfyUI install: {data['scheduler']}")
 
+    res4lyf = _mapping(data, "res4lyf")
+    res4lyf["enabled"] = bool(res4lyf.get("enabled", True))
+
     refinement = _mapping(data, "refinement")
+    refinement["enabled"] = bool(refinement.get("enabled", True))
     refinement["steps"] = _integer(refinement.get("steps", 3), "Refinement steps", 1, 1000)
     refinement["cfg"] = _number(refinement.get("cfg", data["cfg"]), "Refinement CFG", 0, 100)
     refinement["denoise"] = _number(refinement.get("denoise", 0.27), "Refinement denoise", 0, 1)
@@ -154,6 +178,8 @@ def parse_config(raw: str, *, need_model: bool, need_clip: bool, need_vae: bool,
         raise ValueError("VAE tile overlap must be smaller than tile size.")
 
     enhancer = _mapping(data, "enhancer")
+    # Kept only for loading old workflow JSON. Film Studio no longer runs a prompt enhancer.
+    enhancer["enabled"] = False
     if enhancer.get("behavior") not in {"light", "balanced", "detailed"}:
         raise ValueError("Prompt enhancer behavior must be light, balanced, or detailed.")
     enhancer["max_length"] = _integer(enhancer.get("max_length", 256), "Enhancer max length", 1, 4096)

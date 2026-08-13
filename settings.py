@@ -6,20 +6,28 @@ from copy import deepcopy
 from typing import Any
 
 
+DEFAULT_FILM_NEGATIVE = (
+    "low quality, blurry, pixelated, bad anatomy, deformed body, extra limbs, malformed hands, "
+    "extra fingers, distorted face, asymmetrical eyes, duplicate subjects, warped background, "
+    "incorrect perspective, cropped limbs, plastic skin, unrealistic lighting, oversaturated, "
+    "text, watermark, logo, CGI, cartoon, motion blur, flicker, jitter, morphing, temporal inconsistency"
+)
+
+
 PRESETS: dict[str, dict[str, Any]] = {
     "Fast": {
         "steps": 8,
         "cfg": 1.0,
         "sampler": "euler",
         "scheduler": "simple",
-        "refinement": {"enabled": False, "steps": 3, "denoise": 0.27},
+        "refinement": {"enabled": True, "steps": 3, "denoise": 0.27},
     },
     "Balanced": {
         "steps": 12,
         "cfg": 1.0,
         "sampler": "euler",
         "scheduler": "simple",
-        "refinement": {"enabled": False, "steps": 3, "denoise": 0.27},
+        "refinement": {"enabled": True, "steps": 3, "denoise": 0.27},
     },
     "Quality": {
         "steps": 15,
@@ -39,16 +47,16 @@ PRESETS: dict[str, dict[str, Any]] = {
 
 
 DEFAULT_CONFIG: dict[str, Any] = {
-    "version": 1,
+    "version": 2,
     "mode": "t2i",
     "preset": "Fast",
     "prompt": "",
-    "negative_prompt": "",
-    "width": 1024,
-    "height": 1024,
+    "negative_prompt": DEFAULT_FILM_NEGATIVE,
+    "width": 1928,
+    "height": 1088,
     "alignment": 8,
-    "aspect_ratio": "1:1",
-    "megapixels": 1.0,
+    "aspect_ratio": "16:9",
+    "megapixels": 2.0,
     "custom_resolution": False,
     "batch_size": 1,
     "steps": 8,
@@ -58,6 +66,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "sampler": "euler",
     "scheduler": "simple",
     "denoise": 1.0,
+    "res4lyf": {
+        "enabled": True,
+    },
     "model": "",
     "clip": "",
     "vae": "",
@@ -70,12 +81,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "cinematic_style": "",
     "reference_downscale_mp": 1.0,
     "vae_decode": {
-        "mode": "auto",
-        "tile_size": 512,
+        "mode": "tiled",
+        "tile_size": 256,
         "overlap": 64,
     },
     "refinement": {
-        "enabled": False,
+        "enabled": True,
         "steps": 3,
         "cfg": 1.0,
         "sampler": "euler",

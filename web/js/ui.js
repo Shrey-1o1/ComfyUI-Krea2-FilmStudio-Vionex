@@ -6,8 +6,8 @@ import { openGallery } from "./gallery.js";
 import { openLoraBrowser } from "./lora_browser.js";
 import { openPromptHistory, rememberPrompt } from "./prompt_history.js";
 import { openPromptStructure } from "./prompt_structure.js?v=film-studio-9";
-import { openSettings } from "./settings.js";
-import { dimensionsFor, FILM_FORMATS, metadataSnapshot, parseState, RESOLUTION_PRESETS, StateStore } from "./state.js";
+import { openSettings } from "./settings.js?v=film-studio-17";
+import { dimensionsFor, FILM_FORMATS, metadataSnapshot, parseState, RESOLUTION_PRESETS, StateStore } from "./state.js?v=film-studio-17";
 
 const MIN_NODE_WIDTH = 900;
 const MIN_UI_HEIGHT = 420;
@@ -17,9 +17,25 @@ function hasConnectedInput(node, name) {
   return (node.inputs || []).some(input => input.name === name && input.link != null);
 }
 
+function preserveNodeSize(node, size=node.size, duration=1800) {
+  const exact=Array.isArray(size)?[Number(size[0]),Number(size[1])]:[MIN_NODE_WIDTH,MIN_UI_HEIGHT];
+  node._k2LockedSize=exact;
+  node._k2SizeLockUntil=Math.max(node._k2SizeLockUntil||0,performance.now()+duration);
+  return exact;
+}
+
+function restoreNodeSize(node, exact) {
+  if(!Array.isArray(exact))return;
+  if(Array.isArray(node.size)){node.size[0]=exact[0];node.size[1]=exact[1];}
+  else node.size=[exact[0],exact[1]];
+  node.setSize?.([exact[0],exact[1]]);
+  node.setDirtyCanvas?.(true,true);
+}
+
 function syncSockets(node, store) {
   node.resizable=true;
-  const preserved=Array.isArray(node.size)?[node.size[0],node.size[1]]:[MIN_NODE_WIDTH,MIN_UI_HEIGHT];
+  const activeLock=performance.now()<(node._k2SizeLockUntil||0)&&Array.isArray(node._k2LockedSize)?node._k2LockedSize:null;
+  const preserved=preserveNodeSize(node,activeLock||(Array.isArray(node.size)?node.size:[MIN_NODE_WIDTH,MIN_UI_HEIGHT]));
   const external = store.get("external") || {};
   const wanted = new Set(["prompt"]);
   if (store.get("mode") !== "t2i") wanted.add("image");
@@ -30,11 +46,15 @@ function syncSockets(node, store) {
     if (wanted.has(name) && index < 0) node.addInput(name, SOCKET_TYPES[name]);
     if (!wanted.has(name) && index >= 0 && node.inputs[index].link == null) node.removeInput(index);
   });
-  const restore=()=>{node.setSize?.([preserved[0],preserved[1]]);node.setDirtyCanvas?.(true,true);};
+  const restore=()=>{
+    if(performance.now()>(node._k2SizeLockUntil||0))return;
+    node.setSize?.([preserved[0],preserved[1]]);
+    node.setDirtyCanvas?.(true,true);
+  };
   restore();
   queueMicrotask(restore);
   requestAnimationFrame(()=>{restore();requestAnimationFrame(restore);});
-  setTimeout(restore,80);
+  [80,180,400,800,1400].forEach(delay=>setTimeout(restore,delay));
 }
 
 function playComplete() {
@@ -87,6 +107,7 @@ function discoverPrompt(store) {
 export function buildNodeUI(node, configWidget) {
   const root=el("div","k2-app");
   const initial=parseState(configWidget.value);
+  configWidget.value=JSON.stringify(initial);
   const store=new StateStore(initial, value => {
     configWidget.value=JSON.stringify(value);
     configWidget.callback?.(configWidget.value);
@@ -107,7 +128,7 @@ export function buildNodeUI(node, configWidget) {
   const tabs=el("nav","k2-tabs");tabs.setAttribute("aria-label","Film Studio mode");
   const tabButtons={};
   const modeCopy={t2i:["Text to Film (T2I)","Create a new cinematic frame"],i2i:["Transform Frame (I2I)","Restyle or preserve a reference"],control:["Directed Control (ControlNet)","Guide structure with a control map"]};
-  ["t2i","i2i","control"].forEach(mode=>{const tab=button("","k2-tab");tab.append(el("strong","",modeCopy[mode][0]),el("small","",modeCopy[mode][1]));tab.onclick=()=>{store.set("mode",mode);syncSockets(node,store);renderMode();};tabButtons[mode]=tab;tabs.append(tab);});
+  ["t2i","i2i","control"].forEach(mode=>{const tab=button("","k2-tab");tab.append(el("strong","",modeCopy[mode][0]),el("small","",modeCopy[mode][1]));tab.addEventListener("pointerdown",()=>{const source=node._k2UserSize||node._k2StableSize||node.size;tab._k2PreservedSize=Array.isArray(source)?[source[0],source[1]]:null;},{capture:true});tab.onclick=()=>{const exact=preserveNodeSize(node,tab._k2PreservedSize||node._k2UserSize||node.size,2400);store.set("mode",mode);syncSockets(node,store);renderMode();restoreNodeSize(node,exact);};tabButtons[mode]=tab;tabs.append(tab);});
 
   const content=el("div","k2-content"), controls=el("section","k2-controls"), preview=el("section","k2-preview");
   const size=el("section","k2-block k2-film-size"), sizeHead=el("div","k2-block-head"); sizeHead.append(el("span","k2-section-index","01"),el("strong","","Film frame"));
@@ -132,6 +153,7 @@ export function buildNodeUI(node, configWidget) {
 
   const parameters=el("section","k2-block"), paramGrid=el("div","k2-vertical-form k2-parameter-grid");
   const parameterHead=el("div","k2-block-head");parameterHead.append(el("span","k2-section-index","02"),el("strong","","Exposure & sampling"));parameters.append(parameterHead);
+  const samplingBackendNote=el("p","k2-note k2-sampling-backend-note");
   const steps=number(store.get("steps"),1,1000,1,value=>{store.set("steps",value);store.set("preset","Custom");presetSelect.value="Custom";});
   const cfg=number(store.get("cfg"),0,100,.1,value=>{store.set("cfg",value);store.set("preset","Custom");presetSelect.value="Custom";});
   const seed=number(store.get("seed"),0,Number.MAX_SAFE_INTEGER,1,value=>store.set("seed",value));
@@ -140,7 +162,7 @@ export function buildNodeUI(node, configWidget) {
   const scheduler=select(models.schedulers,store.get("scheduler"),value=>{store.set("scheduler",value);store.set("preset","Custom");presetSelect.value="Custom";});
   const presetSelect=select(["Fast","Balanced","Quality","Custom"],store.get("preset") || "Fast",value=>applyPreset(value));
   async function applyPreset(name){store.set("preset",name);if(name==="Custom")return;const patch=models.presets?.[name];if(!patch)return;Object.entries(patch).forEach(([key,value])=>store.set(key,value));steps.value=store.get("steps");cfg.value=store.get("cfg");sampler.value=store.get("sampler");scheduler.value=store.get("scheduler");}
-  paramGrid.append(field("Studio preset",presetSelect,"Fast, balanced, or two-pass quality"),field("Sampling steps",steps),field("Prompt guidance",cfg),field("Frame seed",seed),random,field("Sampler",sampler),field("Noise schedule",scheduler));parameters.append(paramGrid);
+  paramGrid.append(field("Studio preset",presetSelect,"Fast, balanced, or two-pass quality"),field("Sampling steps",steps),field("Prompt guidance",cfg),field("Frame seed",seed),random,field("Sampler",sampler),field("Noise schedule",scheduler));parameters.append(paramGrid,samplingBackendNote);
 
   const stylesBlock=el("section","k2-block k2-styles-block"), stylesHead=el("div","k2-block-head");stylesHead.append(el("span","k2-section-index","03"),el("strong","","Cinematic style"));
   const styleSelect=select([{label:"No style — use prompt only",value:""}],store.get("cinematic_style")||"",value=>{store.set("cinematic_style",value);renderStyleDetails();});
@@ -202,12 +224,28 @@ export function buildNodeUI(node, configWidget) {
   const refineSampler=select(models.samplers,store.get("refinement.sampler"),v=>store.set("refinement.sampler",v));
   const refineScheduler=select(models.schedulers,store.get("refinement.scheduler"),v=>store.set("refinement.scheduler",v));
   const denoiseControl=number(store.get("denoise"),0,1,.01,v=>store.set("denoise",v));
-  const refinementToggle=toggle("Refinement",store.get("refinement.enabled"),v=>store.set("refinement.enabled",v));
+  const refinementToggle=toggle("Refinement pass",store.get("refinement.enabled"),v=>{store.set("refinement.enabled",v);renderSamplingBackend();});
   const refineSteps=number(store.get("refinement.steps"),1,1000,1,v=>store.set("refinement.steps",v));
   const refineCfg=number(store.get("refinement.cfg"),0,100,.1,v=>store.set("refinement.cfg",v));
   const refineDenoise=number(store.get("refinement.denoise"),0,1,.01,v=>store.set("refinement.denoise",v));
-  advancedGrid.append(field("Denoise",denoiseControl),refinementToggle,field("Refine steps",refineSteps),field("Refine CFG",refineCfg),field("Refine sampler",refineSampler),field("Refine scheduler",refineScheduler),field("Refine denoise",refineDenoise));
-  advanced.append(negative,advancedGrid);
+  const refineSamplerField=field("Refine sampler",refineSampler), refineSchedulerField=field("Refine scheduler",refineScheduler);
+  const refinementNote=el("p","k2-note k2-refinement-note");
+  advancedGrid.append(field("Primary denoise",denoiseControl),refinementToggle,field("Refine steps",refineSteps),field("Refine CFG",refineCfg),refineSamplerField,refineSchedulerField,field("Refine denoise",refineDenoise));
+  advanced.append(negative,advancedGrid,refinementNote);
+  function renderSamplingBackend(){
+    const recommended=store.get("res4lyf.enabled")!==false;
+    [presetSelect,steps,cfg,sampler,scheduler,refineSampler,refineScheduler].forEach(control=>{if(control)control.disabled=recommended;});
+    [refinementToggle.querySelector("input"),refineSteps,refineCfg,refineDenoise].forEach(control=>{if(control)control.disabled=false;});
+    refineSteps.max=recommended?"14":"1000";
+    refineSamplerField.hidden=recommended;refineSchedulerField.hidden=recommended;
+    parameters.classList.toggle("is-res4lyf",recommended);
+    samplingBackendNote.textContent=recommended
+      ? "RES4LYF recommended chain active · linear/euler → exponential/res_4s_munthe-kaas. Refinement controls the second pass."
+      : "Native ComfyUI KSampler active · the controls above and optional refinement are used.";
+    refinementNote.textContent=recommended
+      ? "RES4LYF pass 2 uses the refinement steps, CFG, and denoise below. Its sampler is fixed to exponential/res_4s_munthe-kaas with kl_optimal; disabling Refinement decodes pass 1 directly."
+      : "Native pass 2 uses every refinement setting above. Disable Refinement to run only the primary KSampler pass.";
+  }
   advanced.ontoggle=()=>store.set("advanced",advanced.open);
   const previewToolbar=el("div","k2-preview-toolbar"), previewTitle=el("strong","","FINAL FILM FRAME");
   const fit=button("Fit","k2-btn k2-btn-quiet"), one=button("1:1","k2-btn k2-btn-quiet"), zoomOut=button("−","k2-btn k2-btn-icon"),zoomIn=button("+","k2-btn k2-btn-icon"),copyImage=button("Copy","k2-btn k2-btn-quiet"),saveImage=button("Save","k2-btn k2-btn-quiet"),previewFull=button("⛶","k2-btn k2-btn-icon");
@@ -235,17 +273,20 @@ export function buildNodeUI(node, configWidget) {
   resizeGrip.onmousedown=event=>{
     if(event.button!==0)return;
     event.preventDefault();event.stopPropagation();
+    node._k2LockedSize=null;node._k2SizeLockUntil=0;node._k2UserResizeActive=true;
     const startX=event.clientX,startY=event.clientY;
-    const startSize=Array.isArray(node.size)?[node.size[0],node.size[1]]:[MIN_NODE_WIDTH,MIN_UI_HEIGHT];
+    const sourceSize=node._k2UserSize||node._k2StableSize||node.size;
+    const startSize=Array.isArray(sourceSize)?[sourceSize[0],sourceSize[1]]:[MIN_NODE_WIDTH,MIN_UI_HEIGHT];
+    let finalSize=[startSize[0],startSize[1]];
     const rendered=root.getBoundingClientRect();
     const scale=Math.max(.05,rendered.width/(root.offsetWidth||rendered.width||1));
     const previousCursor=document.documentElement.style.cursor;
     document.documentElement.style.cursor="nwse-resize";resizeGrip.classList.add("is-resizing");
     const move=moveEvent=>{
       const next=[startSize[0]+(moveEvent.clientX-startX)/scale,startSize[1]+(moveEvent.clientY-startY)/scale];
-      node.setSize?.(next);node.setDirtyCanvas?.(true,true);
+      finalSize=next;node._k2UserSize=[next[0],next[1]];node.setSize?.(next);node.setDirtyCanvas?.(true,true);
     };
-    const finish=()=>{document.documentElement.style.cursor=previousCursor;resizeGrip.classList.remove("is-resizing");window.removeEventListener("mousemove",move,true);window.removeEventListener("mouseup",finish,true);window.removeEventListener("blur",finish,true);};
+    const finish=()=>{node._k2UserResizeActive=false;node._k2UserSize=[finalSize[0],finalSize[1]];node._k2StableSize=[finalSize[0],finalSize[1]];restoreNodeSize(node,finalSize);document.documentElement.style.cursor=previousCursor;resizeGrip.classList.remove("is-resizing");window.removeEventListener("mousemove",move,true);window.removeEventListener("mouseup",finish,true);window.removeEventListener("blur",finish,true);};
     window.addEventListener("mousemove",move,true);window.addEventListener("mouseup",finish,true);window.addEventListener("blur",finish,true);
   };
   resizeGrip.ondragstart=event=>event.preventDefault();
@@ -268,7 +309,7 @@ export function buildNodeUI(node, configWidget) {
     preserveOrSelect("refinement.sampler",data.samplers,store.get("sampler"));
     preserveOrSelect("refinement.scheduler",data.schedulers,store.get("scheduler"));
     const managed=[...(data.suggested?.managed_loras||[])];
-    if(managed.length){const loras=[...(store.get("loras")||[])];let changed=false;managed.forEach(name=>{let item=loras.find(row=>row.name===name);if(!item){item={name,strength_model:1,strength_clip:1,enabled:true,managed:true};loras.push(item);changed=true;}else if(item.enabled===false||!item.managed){item.enabled=true;item.managed=true;changed=true;}});if(changed)store.set("loras",loras);}
+    if(managed.length){const loras=[...(store.get("loras")||[])];let changed=false;managed.forEach(name=>{const strength=/cinematic_movie_still/i.test(name)?.8:1;let item=loras.find(row=>row.name===name);if(!item){item={name,strength_model:strength,strength_clip:strength,enabled:true,managed:true};loras.push(item);changed=true;}else if(item.enabled===false||!item.managed||Number(item.strength_model)!==strength||Number(item.strength_clip)!==strength){item.enabled=true;item.managed=true;item.strength_model=strength;item.strength_clip=strength;changed=true;}});if(changed)store.set("loras",loras);}
     setOptions(styleSelect,[{label:"No style — use prompt only",value:""},...models.styles.map(item=>({label:item.label,value:item.value}))],store.get("cinematic_style")||"");renderStyleDetails();
     setOptions(sampler,data.samplers,store.get("sampler"));setOptions(scheduler,data.schedulers,store.get("scheduler"));
     setOptions(refineSampler,data.samplers,store.get("refinement.sampler"));setOptions(refineScheduler,data.schedulers,store.get("refinement.scheduler"));renderMode();
@@ -298,7 +339,6 @@ export function buildNodeUI(node, configWidget) {
     if(store.get("mode")!=="t2i"&&!store.get("uploads.image")&&!hasConnectedInput(node,"image"))return showError(new Error("Upload an image or connect the IMAGE input."));
     if(store.get("mode")==="control"&&models.capabilities.control===false)return showError(new Error("KREA2 Control is unavailable because its installed nodes were not registered."));
     if(store.get("mode")==="i2i"&&store.get("i2i.pipeline")==="identity_edit"&&models.capabilities.identity_edit===false)return showError(new Error("KREA Identity Edit is unavailable because its installed nodes were not registered."));
-    if(store.get("enhancer.enabled")&&models.capabilities.prompt_enhancer===false)return showError(new Error("Prompt enhancement is unavailable because TextGenerate was not registered."));
     if(store.get("mode")==="control"&&!store.get("control.lora"))return showError(new Error("Select the KREA Control LoRA."));
     rememberPrompt(store.get("prompt")||"");generate.disabled=true;generate.textContent="QUEUED…";stop.hidden=false;usedSeed=null;
     try{await app.queuePrompt(0,1);generate.textContent="GENERATING…";}catch(error){showError(error);}
@@ -312,7 +352,7 @@ export function buildNodeUI(node, configWidget) {
     if(message?.used_seed?.length){usedSeed=Number(message.used_seed[0]);seedText.textContent=`Seed: ${usedSeed}`;if(store.get("randomize_seed")){store.set("seed",usedSeed);seed.value=usedSeed;}}
     const images=message?.images || [];
     if(!images.length)return;
-    resetRunState();placeholder.hidden=true;outputImage.hidden=false;
+    resetRunState();placeholder.hidden=true;outputImage.hidden=false;viewport.classList.add("has-output");
     const baseMetadata=metadataSnapshot(store.get(),usedSeed);
     const entries=images.map((item,index)=>{
       const image={filename:item.filename,subfolder:item.subfolder||"",type:item.type|| (store.get("auto_save")?"output":"temp")};
@@ -342,7 +382,7 @@ export function buildNodeUI(node, configWidget) {
     sampler.value=store.get("sampler");scheduler.value=store.get("scheduler");presetSelect.value=store.get("preset")||"Custom";batch.value=String(store.get("batch_size")||1);
     denoiseControl.value=store.get("denoise");refinementToggle.querySelector("input").checked=!!store.get("refinement.enabled");refineSteps.value=store.get("refinement.steps");refineCfg.value=store.get("refinement.cfg");refineDenoise.value=store.get("refinement.denoise");
     refineSampler.value=store.get("refinement.sampler");refineScheduler.value=store.get("refinement.scheduler");advanced.open=!!store.get("advanced");autosave.querySelector("input").checked=!!store.get("auto_save");
-    renderLoraChips();syncSockets(node,store);renderMode();
+    renderLoraChips();renderSamplingBackend();syncSockets(node,store);renderMode();
   }
   store.subscribe((path)=>{
     if(path==="*")syncControlsFromState();
@@ -350,8 +390,10 @@ export function buildNodeUI(node, configWidget) {
     if(path==="loras")renderLoraChips();
     if(path==="auto_save")autosave.querySelector("input").checked=!!store.get("auto_save");
     if(path==="advanced"){advanced.open=!!store.get("advanced");renderMode();}
+    if(path==="res4lyf.enabled")renderSamplingBackend();
+    if(path==="refinement.enabled")renderSamplingBackend();
   });
   async function bootstrapAssets(){let refresh=false;try{const assets=await kreaApi.ensureAssets();refresh=!!assets.changed;if(assets.restart_required)showError(new Error("KREA ControlNet nodes were installed. Restart ComfyUI once to activate Directed Control."));}catch(error){showError(new Error(`Managed asset check failed: ${error.message}`));}await refreshModels(refresh);}
-  renderMode();syncSockets(node,store);bootstrapAssets().catch(showError);
+  renderMode();renderSamplingBackend();syncSockets(node,store);bootstrapAssets().catch(showError);
   return {root,store,models,handleExecuted,showError,handleStopped:resetRunState,syncSockets:()=>syncSockets(node,store)};
 }

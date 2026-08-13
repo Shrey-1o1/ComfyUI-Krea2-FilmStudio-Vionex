@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import nodes as comfy_nodes
@@ -10,6 +11,9 @@ from comfy_execution.graph_utils import GraphBuilder, is_link
 from ..config import GenerationConfig
 from ..styles import style_suffix
 from .base import BaseGenerationProvider, ExpansionResult
+
+
+LOGGER = logging.getLogger("Krea2FilmStudio")
 
 
 def _node_available(name: str) -> bool:
@@ -29,9 +33,9 @@ class Krea2Provider(BaseGenerationProvider):
                 "Krea2ControlImageEncode",
                 "Krea2ControlApply",
             )),
-            "prompt_enhancer": _node_available("TextGenerate"),
             "depth_preprocessor": _node_available("AIO_Preprocessor"),
             "tiled_decode": _node_available("VAEDecodeTiled"),
+            "res4lyf": _node_available("ClownsharKSampler_Beta"),
         }
 
     @staticmethod
@@ -110,8 +114,113 @@ class Krea2Provider(BaseGenerationProvider):
         return model, clip
 
     @staticmethod
+    def _empty_latent(builder: GraphBuilder, vae: list[Any], config: GenerationConfig) -> list[Any]:
+        """Create the 16-channel KREA latent used by the supplied Film workflow."""
+
+        if _node_available("VAEEncodeAdvanced"):
+            latent = builder.node(
+                "VAEEncodeAdvanced",
+                vae=vae,
+                resize_to_input="false",
+                width=config.width,
+                height=config.height,
+                mask_channel="red",
+                invert_mask=False,
+                latent_type="16_channels",
+                interpolation="lanczos",
+                method="fill / crop",
+            ).out(3)
+        else:
+            LOGGER.warning(
+                "Krea 2 Film Studio: VAEEncodeAdvanced is unavailable; falling back to EmptyLatentImage."
+            )
+            latent = builder.node(
+                "EmptyLatentImage",
+                width=config.width,
+                height=config.height,
+                batch_size=1,
+            ).out(0)
+        if int(config.data["batch_size"]) > 1:
+            latent = builder.node(
+                "RepeatLatentBatch",
+                samples=latent,
+                amount=int(config.data["batch_size"]),
+            ).out(0)
+        return latent
+
+    @staticmethod
     def _sample(builder: GraphBuilder, model: list[Any], positive: list[Any], negative: list[Any], latent: list[Any], config: GenerationConfig, denoise: float) -> list[Any]:
         data = config.data
+        if data["res4lyf"].get("enabled", True):
+            if not _node_available("ClownsharKSampler_Beta"):
+                raise RuntimeError(
+                    "RES4LYF recommended sampling is enabled, but ClownsharKSampler is unavailable. "
+                    "Install RES4LYF and restart ComfyUI, or disable it in Film Studio Settings."
+                )
+            refinement = data["refinement"]
+            refine_enabled = bool(refinement.get("enabled"))
+            refine_steps = max(1, min(14, int(refinement.get("steps", 3))))
+            primary_steps = max(1, 15 - refine_steps) if refine_enabled else 15
+            LOGGER.info(
+                "Krea 2 Film Studio: RES4LYF pass 1 linear/euler + beta, %s/15 steps, denoise %.2f.",
+                primary_steps,
+                denoise,
+            )
+            first = builder.node(
+                "ClownsharKSampler_Beta",
+                model=model,
+                positive=positive,
+                negative=negative,
+                latent_image=latent,
+                eta=0.5,
+                sampler_name="linear/euler",
+                scheduler="beta",
+                steps=15,
+                steps_to_run=primary_steps,
+                denoise=float(denoise),
+                cfg=1.0,
+                seed=config.seed,
+                sampler_mode="standard",
+                bongmath=True,
+            )
+            if not refine_enabled:
+                LOGGER.info("Krea 2 Film Studio: refinement disabled; decoding pass 1 denoised latent.")
+                return first.out(1)
+
+            LOGGER.info(
+                "Krea 2 Film Studio: RES4LYF refinement pass exponential/res_4s_munthe-kaas + kl_optimal, "
+                "%s/15 steps, CFG %.2f, denoise %.2f.",
+                refine_steps,
+                float(refinement.get("cfg", 1.0)),
+                float(refinement.get("denoise", 0.27)),
+            )
+            second = builder.node(
+                "ClownsharKSampler_Beta",
+                model=model,
+                positive=positive,
+                negative=negative,
+                latent_image=first.out(1),
+                eta=0.5,
+                sampler_name="exponential/res_4s_munthe-kaas",
+                scheduler="kl_optimal",
+                steps=15,
+                steps_to_run=refine_steps,
+                denoise=float(refinement.get("denoise", 0.27)),
+                cfg=float(refinement.get("cfg", 1.0)),
+                seed=config.seed,
+                sampler_mode="standard",
+                bongmath=True,
+            )
+            return second.out(1)
+
+        LOGGER.info(
+            "Krea 2 Film Studio: native KSampler pass 1, %s steps, %s/%s, CFG %.2f, denoise %.2f.",
+            int(data["steps"]),
+            data["sampler"],
+            data["scheduler"],
+            float(data["cfg"]),
+            denoise,
+        )
         sampler = builder.node(
             "KSampler",
             model=model,
@@ -128,6 +237,14 @@ class Krea2Provider(BaseGenerationProvider):
         sampled = sampler.out(0)
         refinement = data["refinement"]
         if refinement.get("enabled"):
+            LOGGER.info(
+                "Krea 2 Film Studio: native refinement pass, %s steps, %s/%s, CFG %.2f, denoise %.2f.",
+                int(refinement.get("steps", 3)),
+                refinement.get("sampler", data["sampler"]),
+                refinement.get("scheduler", data["scheduler"]),
+                float(refinement.get("cfg", data["cfg"])),
+                float(refinement.get("denoise", 0.27)),
+            )
             refined = builder.node(
                 "KSampler",
                 model=model,
@@ -159,8 +276,8 @@ class Krea2Provider(BaseGenerationProvider):
                 vae=vae,
                 tile_size=int(decode.get("tile_size", 512)),
                 overlap=int(decode.get("overlap", 64)),
-                temporal_size=64,
-                temporal_overlap=8,
+                temporal_size=4096,
+                temporal_overlap=64,
             )
         else:
             node = builder.node("VAEDecode", samples=latent, vae=vae)
@@ -193,17 +310,11 @@ class Krea2Provider(BaseGenerationProvider):
         suffix = style_suffix(str(data.get("cinematic_style", "")))
         if suffix:
             prompt = builder.node("Krea2PromptStyle", prompt=prompt, suffix=suffix).out(0)
-        prompt = self._enhance_prompt(builder, prompt, clip, data)
         uploads = data["uploads"]
 
         if data["mode"] == "t2i":
             positive, negative = self._conditioning(builder, clip, prompt, str(data["negative_prompt"]))
-            latent = builder.node(
-                "EmptyLatentImage",
-                width=config.width,
-                height=config.height,
-                batch_size=int(data["batch_size"]),
-            ).out(0)
+            latent = self._empty_latent(builder, vae, config)
             denoise = 1.0
 
         elif data["mode"] == "i2i" and data["i2i"].get("pipeline") == "identity_edit":
@@ -215,12 +326,7 @@ class Krea2Provider(BaseGenerationProvider):
                 image_2 = self._downscale(builder, image_2, data.get("reference_downscale_mp"))
             source_latent = builder.node("VAEEncode", pixels=image, vae=vae).out(0)
             source_latent_2 = builder.node("VAEEncode", pixels=image_2, vae=vae).out(0) if image_2 else None
-            latent = builder.node(
-                "EmptyLatentImage",
-                width=config.width,
-                height=config.height,
-                batch_size=int(data["batch_size"]),
-            ).out(0)
+            latent = self._empty_latent(builder, vae, config)
             edit = data["i2i"]
             model_inputs: dict[str, Any] = {
                 "model": model,
@@ -280,12 +386,7 @@ class Krea2Provider(BaseGenerationProvider):
                     preprocessor="DepthAnythingV2Preprocessor",
                     resolution=int(control.get("preprocessor_resolution", 1024)),
                 ).out(0)
-            latent = builder.node(
-                "EmptyLatentImage",
-                width=config.width,
-                height=config.height,
-                batch_size=int(data["batch_size"]),
-            ).out(0)
+            latent = self._empty_latent(builder, vae, config)
             control_latent = builder.node(
                 "Krea2ControlImageEncode",
                 control_image=image,

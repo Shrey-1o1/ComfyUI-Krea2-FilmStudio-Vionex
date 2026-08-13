@@ -816,14 +816,7 @@ select.k2-input {
   justify-content: center;
   cursor: grab;
   contain: strict;
-  background-color: #030711;
-  background-image:
-    linear-gradient(45deg, rgba(20, 41, 69, .35) 25%, transparent 25%),
-    linear-gradient(-45deg, rgba(20, 41, 69, .35) 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, rgba(20, 41, 69, .35) 75%),
-    linear-gradient(-45deg, transparent 75%, rgba(20, 41, 69, .35) 75%);
-  background-size: 20px 20px;
-  background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+  background: #000;
 }
 
 .k2-viewport.is-panning {
@@ -839,6 +832,10 @@ select.k2-input {
   text-align: center;
   color: #6f829e;
   animation: k2-pulse 3s ease-in-out infinite;
+}
+
+.k2-placeholder[hidden] {
+  display: none !important;
 }
 
 .k2-placeholder > span {
@@ -872,6 +869,7 @@ select.k2-input {
   transform-origin: center;
   transition: transform .16s ease, opacity .2s ease;
   animation: k2-image-in .28s ease both;
+  background: #000;
 }
 
 .k2-output-image.is-native {
@@ -1353,7 +1351,7 @@ select.k2-input {
 }
 
 .k2-viewport:fullscreen {
-  background: #030711;
+  background: #000;
 }
 
 .k2-viewport:fullscreen .k2-output-image {

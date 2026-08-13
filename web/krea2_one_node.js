@@ -1,10 +1,10 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
-import { buildNodeUI } from "./js/ui.js?v=film-studio-11";
+import { buildNodeUI } from "./js/ui.js?v=film-studio-17";
 
 const styleId="krea2-one-node-style";
 if(!document.getElementById(styleId)){
-  const link=document.createElement("link");link.id=styleId;link.rel="stylesheet";link.href=`${new URL("./css/krea2_one_node.css",import.meta.url).href}?v=film-studio-11`;document.head.append(link);
+  const link=document.createElement("link");link.id=styleId;link.rel="stylesheet";link.href=`${new URL("./css/krea2_one_node.css",import.meta.url).href}?v=film-studio-17`;document.head.append(link);
 }
 
 const controllers=new Map();
@@ -23,6 +23,47 @@ function normalizedSize(node,size=node.size){
   const width=Math.max(MIN_NODE_WIDTH,Number(size?.[0])||DEFAULT_NODE_WIDTH);
   const height=Math.max(MIN_UI_HEIGHT+sockets,Number(size?.[1])||DEFAULT_UI_HEIGHT+sockets);
   return [width,height];
+}
+
+function cloneSize(size){
+  return Array.isArray(size)&&Number.isFinite(Number(size[0]))&&Number.isFinite(Number(size[1]))
+    ?[Number(size[0]),Number(size[1])]
+    :null;
+}
+
+function activeSizeLock(node){
+  const locked=cloneSize(node._k2LockedSize);
+  return locked&&performance.now()<(node._k2SizeLockUntil||0)?locked:null;
+}
+
+function forceNodeSize(node,size){
+  const exact=normalizedSize(node,size);
+  if(Array.isArray(node.size)){node.size[0]=exact[0];node.size[1]=exact[1];}
+  else node.size=[exact[0],exact[1]];
+  syncRootSize(node,exact);
+  return exact;
+}
+
+function lockNodeSize(node,size,duration=1800){
+  const exact=normalizedSize(node,size);
+  node._k2LockedSize=[exact[0],exact[1]];
+  node._k2SizeLockUntil=Math.max(node._k2SizeLockUntil||0,performance.now()+duration);
+  forceNodeSize(node,exact);
+  return exact;
+}
+
+function restoreLockedSize(node,size,duration=1800){
+  const exact=lockNodeSize(node,size,duration);
+  const restore=()=>{
+    if(performance.now()>(node._k2SizeLockUntil||0))return;
+    node.setSize?.([exact[0],exact[1]]);
+    forceNodeSize(node,exact);
+    node.setDirtyCanvas?.(true,true);
+  };
+  queueMicrotask(restore);
+  requestAnimationFrame(()=>{restore();requestAnimationFrame(restore);});
+  [80,180,400,800,1400].forEach(delay=>setTimeout(restore,delay));
+  return exact;
 }
 
 function syncRootSize(node,size=node.size){
@@ -79,6 +120,10 @@ app.registerExtension({
       suppressNativePreview(this);
       requestAnimationFrame(()=>{
         if(controllers.has(this))return;
+        const preferred=cloneSize(this._k2ConfiguredSize)||cloneSize(this._k2UserSize)||cloneSize(this._k2StableSize)||[DEFAULT_NODE_WIDTH,DEFAULT_UI_HEIGHT+socketHeight(this)];
+        const initial=lockNodeSize(this,preferred);
+        this._k2UserSize=[initial[0],initial[1]];
+        this._k2StableSize=[initial[0],initial[1]];
         const controller=buildNodeUI(this,configWidget);controllers.set(this,controller);
         const self=this;
         const widget=this.addDOMWidget("krea2_ui","div",controller.root,{
@@ -90,9 +135,8 @@ app.registerExtension({
           computeSize(){return normalizedSize(self);},
         });
         widget.computeLayoutSize=()=>({minWidth:1,minHeight:MIN_UI_HEIGHT});
-        const initial=normalizedSize(this,[DEFAULT_NODE_WIDTH,DEFAULT_UI_HEIGHT+socketHeight(this)]);
         syncRootSize(this,initial);
-        this.setSize(initial);
+        restoreLockedSize(this,initial);
       });
     };
     nodeType.prototype.onExecuted=function(message){
@@ -103,20 +147,32 @@ app.registerExtension({
       controllers.get(this)?.handleExecuted(message);
     };
     nodeType.prototype.onConfigure=function(info){
-      configured?.apply(this,arguments);
+      const saved=normalizedSize(this,cloneSize(info?.size)||cloneSize(this.size)||[DEFAULT_NODE_WIDTH,DEFAULT_UI_HEIGHT+socketHeight(this)]);
+      this._k2ConfiguredSize=[saved[0],saved[1]];
+      this._k2UserSize=[saved[0],saved[1]];
+      this._k2StableSize=[saved[0],saved[1]];
+      lockNodeSize(this,saved,2200);
+      const result=configured?.apply(this,arguments);
       this.resizable=true;
       hideConfigWidget(this,(this.widgets||[]).find(widget=>widget.name==="config"));
       suppressNativePreview(this);
-      requestAnimationFrame(()=>controllers.get(this)?.syncSockets());
+      restoreLockedSize(this,saved,2200);
+      requestAnimationFrame(()=>{controllers.get(this)?.syncSockets();restoreLockedSize(this,saved,1800);});
+      return result;
     };
     nodeType.prototype.onRemoved=function(){controllers.delete(this);removed?.apply(this,arguments);};
     nodeType.prototype.onResize=function(size){
-      const normalized=normalizedSize(this,size);
+      const locked=activeSizeLock(this);
+      const normalized=normalizedSize(this,locked||size);
       if(Array.isArray(size)){size[0]=normalized[0];size[1]=normalized[1];}
-      if(Array.isArray(this.size)){this.size[0]=normalized[0];this.size[1]=normalized[1];}
-      else this.size=normalized;
-      syncRootSize(this,normalized);
-      return resized?.apply(this,arguments);
+      forceNodeSize(this,normalized);
+      const result=resized?.call(this,normalized);
+      forceNodeSize(this,normalized);
+      if(!locked&&!this._k2UserResizeActive){
+        this._k2UserSize=[normalized[0],normalized[1]];
+        this._k2StableSize=[normalized[0],normalized[1]];
+      }
+      return result;
     };
   },
 });

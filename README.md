@@ -14,6 +14,8 @@ Restart ComfyUI, then add **Krea 2 Film Studio** from the **KREA → Film Studio
 
 The package adds no Python dependencies beyond a working current ComfyUI installation.
 
+Film Studio also integrates [RES4LYF](https://github.com/ClownsharkBatwing/RES4LYF) as its default recommended sampler backend. The managed asset check installs the custom nodes when absent; restart ComfyUI once after that installation.
+
 ## Required model files
 
 Use KREA 2-compatible files already supported by native ComfyUI. This installation's workflows reference a KREA diffusion model, a Qwen3-VL 4B KREA text encoder, and default to the Wan 2.1 VAE requested for Film Studio output. Filenames are examples only; the UI scans the actual configured ComfyUI model paths.
@@ -44,11 +46,22 @@ The **Cinematic style** menu contains ten VIONEX camera, lighting, color-grade, 
 ## T2I
 
 1. Select **T2I**.
-2. Choose a resolution preset or aspect ratio + megapixel target.
+2. Use the default **Optimal Film 16:9 · 1928 × 1088** frame, or choose another preset/aspect ratio.
 3. Set steps, CFG, seed, sampler, scheduler, and batch count.
 4. Write the prompt and click **Generate** or press `Ctrl/Cmd + Enter`.
 
-An empty negative prompt uses native `ConditioningZeroOut`, matching the proven local Turbo workflow. A non-empty negative prompt is encoded normally.
+The supplied Film workflow's quality negative prompt is included by default and can be edited in Advanced Film Controls.
+
+## Sampling engines
+
+**Use RES4LYF recommended samplers (Recommended)** is enabled by default in Film Studio Settings. It expands to the exact two-node `ClownsharKSampler_Beta` chain used by the studio workflow:
+
+- pass 1: `linear/euler`, `beta`, 15 total steps, 12 steps to run, eta 0.50, CFG 1.00, Standard mode, BongMath on;
+- pass 2: `exponential/res_4s_munthe-kaas`, `kl_optimal`, 15 total steps, 3 steps to run, denoise 0.27, eta 0.50, CFG 1.00, Standard mode, BongMath on;
+- the pass-1 **denoised** latent feeds pass 2, and the pass-2 denoised latent feeds the VAE decoder, matching the supplied Film workflow;
+- T2I and Control use `VAEEncodeAdvanced` to create the required 16-channel empty latent when RES4LYF is installed.
+
+For T2I and Control, pass 1 uses denoise 1.00. For latent I2I it preserves the selected transform denoise so the reference-strength control still works. Advanced Film Controls enables/disables pass 2 and controls its steps, CFG, and denoise for RES4LYF; native KSampler uses the same refinement switch plus its sampler and scheduler fields.
 
 ## I2I
 
@@ -87,15 +100,9 @@ The main-panel button opens a searchable browser with recent and favorite lists.
 
 The provider emits one native `LoraLoader` per enabled row. LoRAs stay as model patches and are not baked into the base model. Changing a row changes the serialized graph configuration and invalidates the relevant native expansion.
 
-## Prompt enhancement
-
-The optional enhancer uses the local ComfyUI `TextGenerate` node with the already loaded Qwen text encoder. It supports behavior, max length, temperature, Top K, Top P, repetition penalty, seed, and thinking controls. It is off by default; with it off, the prompt reaches `CLIPTextEncode` unchanged.
-
-This is separate from the installed Krea2T model-side prompt-adherence patch. No network or external API is used.
-
 ## Settings and serialization
 
-The hidden `config` widget is the workflow source of truth. Saving, reopening, or duplicating the workflow preserves mode, prompts, dimensions, sampling, seed behavior, models, LoRAs, enhancer, I2I/Control, VAE decode, autosave, and advanced settings.
+The hidden `config` widget is the workflow source of truth. Saving, reopening, or duplicating the workflow preserves mode, prompts, dimensions, sampling, seed behavior, models, LoRAs, I2I/Control, VAE decode, autosave, and advanced settings.
 
 Local browser state is not required to reproduce a saved workflow. Uploaded images are stored through ComfyUI's normal input upload path; large base64 image payloads are not put into workflow JSON.
 
