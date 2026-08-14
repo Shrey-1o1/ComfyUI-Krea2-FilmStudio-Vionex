@@ -5,10 +5,13 @@ from __future__ import annotations
 import json
 import logging
 import math
+import os
+from pathlib import Path
 import secrets
 from typing import Any
 
 import comfy.utils
+import nodes as comfy_nodes
 import torch
 from comfy_execution.graph_utils import is_link
 
@@ -136,6 +139,60 @@ class Krea2PromptStyle:
         return (f"{prompt}\n\n{suffix}" if prompt else suffix,)
 
 
+class Krea2DiversityNoise:
+    """Add deterministic low-amplitude latent noise before either sampler backend."""
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "latent": ("LATENT",),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
+                "strength": ("FLOAT", {"default": 0.08, "min": 0.0, "max": 1.0, "step": 0.01}),
+            }
+        }
+
+    RETURN_TYPES = ("LATENT",)
+    FUNCTION = "inject"
+    CATEGORY = "KREA / Film Studio/internal"
+
+    def inject(self, latent: dict[str, Any], seed: int, strength: float):
+        result = dict(latent)
+        samples = latent["samples"]
+        generator = torch.Generator(device="cpu")
+        generator.manual_seed(int(seed) & 0xffffffffffffffff)
+        noise = torch.randn(samples.shape, generator=generator, device="cpu", dtype=torch.float32)
+        result["samples"] = samples + noise.to(device=samples.device, dtype=samples.dtype) * float(strength)
+        return (result,)
+
+
+class Krea2SaveImage(comfy_nodes.SaveImage):
+    """Save images to an explicit absolute folder while preserving ComfyUI metadata."""
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "images": ("IMAGE",),
+                "output_path": ("STRING", {"default": ""}),
+                "filename_prefix": ("STRING", {"default": "KREA2"}),
+            },
+            "hidden": {"prompt": "PROMPT", "extra_pnginfo": "EXTRA_PNGINFO"},
+        }
+
+    def save_images(self, images, output_path="", filename_prefix="KREA2", prompt=None, extra_pnginfo=None):
+        expanded = os.path.expandvars(os.path.expanduser(str(output_path or "").strip()))
+        target = Path(expanded)
+        if not expanded or not target.is_absolute():
+            raise ValueError("Krea 2 Film Studio custom save path must be an absolute folder path.")
+        target.mkdir(parents=True, exist_ok=True)
+        if not target.is_dir():
+            raise ValueError(f"Krea 2 Film Studio save path is not a folder: {target}")
+        self.output_dir = str(target.resolve())
+        self.type = "output"
+        return super().save_images(images, filename_prefix, prompt, extra_pnginfo)
+
+
 class Krea2OneNode:
     """VIONEX film-studio interface that expands to native ComfyUI nodes."""
 
@@ -185,12 +242,14 @@ class Krea2OneNode:
             seed=seed,
         )
         LOGGER.info(
-            "Krea 2 Film Studio: queue node=%s mode=%s resolution=%sx%s seed=%s backend=%s refinement=%s.",
+            "Krea 2 Film Studio: queue node=%s mode=%s resolution=%sx%s seed=%s model=%s text_encoder=%s sampler=%s refinement=%s.",
             unique_id,
             parsed.mode.upper(),
             parsed.width,
             parsed.height,
             parsed.seed,
+            "GGUF" if parsed.data["gguf"].get("enabled") else "standard",
+            "GGUF" if parsed.data["gguf"].get("clip_enabled") else "standard",
             "RES4LYF recommended" if parsed.data["res4lyf"].get("enabled", True) else "native KSampler",
             "on" if parsed.data["refinement"].get("enabled") else "off",
         )
@@ -226,6 +285,8 @@ NODE_CLASS_MAPPINGS = {
     "Krea2ImageFit": Krea2ImageFit,
     "Krea2PromptTemplate": Krea2PromptTemplate,
     "Krea2PromptStyle": Krea2PromptStyle,
+    "Krea2DiversityNoise": Krea2DiversityNoise,
+    "Krea2SaveImage": Krea2SaveImage,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -234,4 +295,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "Krea2ImageFit": "KREA 2 Image Fit (internal)",
     "Krea2PromptTemplate": "KREA 2 Prompt Template (internal)",
     "Krea2PromptStyle": "KREA 2 Cinematic Style (internal)",
+    "Krea2DiversityNoise": "KREA 2 Diversity Noise (internal)",
+    "Krea2SaveImage": "KREA 2 Custom Save (internal)",
 }

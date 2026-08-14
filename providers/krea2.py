@@ -36,6 +36,8 @@ class Krea2Provider(BaseGenerationProvider):
             "depth_preprocessor": _node_available("AIO_Preprocessor"),
             "tiled_decode": _node_available("VAEDecodeTiled"),
             "res4lyf": _node_available("ClownsharKSampler_Beta"),
+            "gguf_model": _node_available("UnetLoaderGGUF"),
+            "gguf_clip": _node_available("CLIPLoaderGGUF"),
         }
 
     @staticmethod
@@ -161,6 +163,7 @@ class Krea2Provider(BaseGenerationProvider):
             refine_enabled = bool(refinement.get("enabled"))
             refine_steps = max(1, min(14, int(refinement.get("steps", 3))))
             primary_steps = max(1, 15 - refine_steps) if refine_enabled else 15
+            eta = float(data["diversity"].get("eta", 0.75)) if data["diversity"].get("enabled") else 0.5
             LOGGER.info(
                 "Krea 2 Film Studio: RES4LYF pass 1 linear/euler + beta, %s/15 steps, denoise %.2f.",
                 primary_steps,
@@ -172,7 +175,7 @@ class Krea2Provider(BaseGenerationProvider):
                 positive=positive,
                 negative=negative,
                 latent_image=latent,
-                eta=0.5,
+                eta=eta,
                 sampler_name="linear/euler",
                 scheduler="beta",
                 steps=15,
@@ -200,7 +203,7 @@ class Krea2Provider(BaseGenerationProvider):
                 positive=positive,
                 negative=negative,
                 latent_image=first.out(1),
-                eta=0.5,
+                eta=eta,
                 sampler_name="exponential/res_4s_munthe-kaas",
                 scheduler="kl_optimal",
                 steps=15,
@@ -292,8 +295,47 @@ class Krea2Provider(BaseGenerationProvider):
             raise RuntimeError("Identity Edit requires the installed comfyui-krea2edit nodes.")
 
         builder = GraphBuilder()
-        model = self._source(builder, raw_inputs.get("model"), "UNETLoader", "unet_name", data["model"], weight_dtype=data["weight_dtype"])
-        clip = self._source(builder, raw_inputs.get("clip"), "CLIPLoader", "clip_name", data["clip"], type="krea2", device=data["clip_device"])
+        raw_model = raw_inputs.get("model")
+        if is_link(raw_model):
+            model = raw_model
+        elif data["gguf"].get("enabled", False):
+            if not caps["gguf_model"]:
+                raise RuntimeError(
+                    "GGUF model loading is enabled, but ComfyUI-GGUF did not register UnetLoaderGGUF. "
+                    "Install or update ComfyUI-GGUF, restart ComfyUI, or disable GGUF in Film Studio Settings."
+                )
+            LOGGER.info("Krea 2 Film Studio: loading GGUF diffusion model %s.", data["gguf"]["model"])
+            model = builder.node("UnetLoaderGGUF", unet_name=data["gguf"]["model"]).out(0)
+        else:
+            model = self._source(
+                builder,
+                raw_model,
+                "UNETLoader",
+                "unet_name",
+                data["model"],
+                weight_dtype=data["weight_dtype"],
+            )
+        raw_clip = raw_inputs.get("clip")
+        if is_link(raw_clip):
+            clip = raw_clip
+        elif data["gguf"].get("clip_enabled", False):
+            if not caps["gguf_clip"]:
+                raise RuntimeError(
+                    "GGUF text encoder loading is enabled, but ComfyUI-GGUF did not register CLIPLoaderGGUF. "
+                    "Install or update ComfyUI-GGUF, restart ComfyUI, or disable the GGUF text encoder in Film Studio Settings."
+                )
+            LOGGER.info("Krea 2 Film Studio: loading GGUF text encoder %s.", data["gguf"]["clip"])
+            clip = builder.node("CLIPLoaderGGUF", clip_name=data["gguf"]["clip"], type="krea2").out(0)
+        else:
+            clip = self._source(
+                builder,
+                raw_clip,
+                "CLIPLoader",
+                "clip_name",
+                data["clip"],
+                type="krea2",
+                device=data["clip_device"],
+            )
         vae = self._source(builder, raw_inputs.get("vae"), "VAELoader", "vae_name", data["vae"])
 
         if data["mode"] == "control":
@@ -403,13 +445,31 @@ class Krea2Provider(BaseGenerationProvider):
             model = builder.node("Krea2ControlApply", model=model, control_latent=control_latent).out(0)
             denoise = float(data["denoise"])
 
+        if data["diversity"].get("enabled"):
+            LOGGER.info(
+                "Krea 2 Film Studio: diversity noise enabled, latent strength %.2f, RES4LYF eta %.2f.",
+                float(data["diversity"]["strength"]),
+                float(data["diversity"]["eta"]),
+            )
+            latent = builder.node(
+                "Krea2DiversityNoise",
+                latent=latent,
+                seed=config.seed,
+                strength=float(data["diversity"]["strength"]),
+            ).out(0)
+
         sampled = self._sample(builder, model, positive, negative, latent, config, denoise)
         image = self._decode(builder, sampled, vae, config)
-        output_type = "SaveImage" if data.get("auto_save", True) else "PreviewImage"
-        output_inputs: dict[str, Any] = {"images": image}
-        if output_type == "SaveImage":
-            output_inputs["filename_prefix"] = "krea2-one-node/KREA2"
-        output = builder.node(output_type, **output_inputs)
+        save_path = str(data.get("save_path", "")).strip()
+        if data.get("auto_save", True) and save_path:
+            builder.node("Krea2SaveImage", images=image, output_path=save_path, filename_prefix="KREA2")
+            output = builder.node("PreviewImage", images=image)
+        else:
+            output_type = "SaveImage" if data.get("auto_save", True) else "PreviewImage"
+            output_inputs: dict[str, Any] = {"images": image}
+            if output_type == "SaveImage":
+                output_inputs["filename_prefix"] = "krea2-one-node/KREA2"
+            output = builder.node(output_type, **output_inputs)
         output.set_override_display_id(str(raw_inputs.get("unique_id", "")))
 
         return ExpansionResult(graph=builder.finalize(), image=image, latent=sampled, seed=config.seed)

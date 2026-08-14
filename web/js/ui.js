@@ -1,17 +1,31 @@
 import { app } from "../../../scripts/app.js";
 import { api } from "../../../scripts/api.js";
 import { kreaApi } from "./api.js";
-import { button, el, field, modal, number, select, setOptions, stepper, toggle } from "./components.js";
+import { button, el, field, modal, number, select, setOptions, stepper, toggle } from "./components.js?v=film-studio-21";
 import { openGallery } from "./gallery.js";
 import { openLoraBrowser } from "./lora_browser.js?v=film-studio-18";
 import { openPromptHistory, rememberPrompt } from "./prompt_history.js";
 import { openPromptStructure } from "./prompt_structure.js?v=film-studio-9";
-import { openSettings } from "./settings.js?v=film-studio-18";
-import { dimensionsFor, FILM_FORMATS, metadataSnapshot, parseState, RESOLUTION_PRESETS, StateStore } from "./state.js?v=film-studio-18";
+import { openSettings } from "./settings.js?v=film-studio-21";
+import { dimensionsFor, FILM_FORMATS, metadataSnapshot, parseState, RESOLUTION_PRESETS, StateStore } from "./state.js?v=film-studio-21";
 
 const MIN_NODE_WIDTH = 900;
 const MIN_UI_HEIGHT = 420;
 const SOCKET_TYPES = {prompt:"STRING",image:"IMAGE",image_2:"IMAGE",model:"MODEL",clip:"CLIP",vae:"VAE"};
+const NODE_THEME_PALETTES = {
+  "red-fire": {title:"#6e2418",body:"#170705",box:"#ff825f"},
+  "blue-snow": {title:"#17436c",body:"#061526",box:"#8bc3ff"},
+  "crimson": {title:"#641832",body:"#17040b",box:"#ff557d"},
+  "glass": {title:"#415d79",body:"#0d1b2a",box:"#b8d5ff"},
+};
+
+function applyCanvasNodeTheme(node, theme) {
+  const palette=NODE_THEME_PALETTES[theme]||NODE_THEME_PALETTES["blue-snow"];
+  node.color=palette.title;
+  node.bgcolor=palette.body;
+  node.boxcolor=palette.box;
+  node.setDirtyCanvas?.(true,true);
+}
 
 function hasConnectedInput(node, name) {
   return (node.inputs || []).some(input => input.name === name && input.link != null);
@@ -107,10 +121,18 @@ function uploadZone(label, store, path, onError) {
 function discoverPrompt(store) {
   const view=modal("DISCOVER PROMPTS");
   const prompts=[
-    ["Cinematic portrait","Cinematic portrait, expressive natural features, dramatic motivated lighting, shallow depth of field, subtle film grain, photorealistic."],
-    ["Editorial fashion","High-fashion editorial photograph, sculptural styling, clean graphic composition, controlled studio lighting, tactile fabric detail."],
-    ["Atmospheric landscape","Vast atmospheric landscape at blue hour, layered depth, volumetric light, natural color separation, finely rendered environmental detail."],
-    ["Product still life","Premium product still life, precise reflections, restrained luxury palette, studio gradient background, realistic materials, commercial photography."],
+    ["Cinematic portrait","A naturalistic cinematic close-up of a weathered traveler at blue hour, quiet direct gaze, wind moving loose hair, 85mm spherical lens, soft horizon bounce, restrained film grain and realistic skin texture."],
+    ["Editorial fashion","High-fashion editorial portrait in a geometric crimson studio, sculptural black tailoring, precise silhouette, directional softbox lighting, controlled highlights, tactile fabric detail and bold negative space."],
+    ["Atmospheric landscape","A lone observatory above a vast cloud inversion before sunrise, layered mountain silhouettes, cold atmospheric haze, warm window practicals, monumental scale and natural color separation."],
+    ["Product still life","Premium mechanical watch on dark volcanic glass, accurate brushed metal and crystal reflections, narrow rim lighting, subtle mist, clean luxury composition and physically realistic materials."],
+    ["Rain-soaked drama","Two estranged friends meet beneath a flickering roadside shelter during heavy rain, wet fabric and skin, quiet unresolved expressions, handheld 50mm framing, practical sodium light and cool storm ambience."],
+    ["Science-fiction desert","A solitary field engineer faces an immense circular machine emerging from a dust storm, extreme-wide low-angle composition, realistic sand interaction, hard late-afternoon light and grounded premium VFX."],
+    ["Macro wildlife","A tiny harvest mouse gripping a diagonal branch among rain-speckled leaves, extreme macro photography, razor focus on the eye and whiskers, creamy deep-green bokeh and soft diffused daylight."],
+    ["Retro-futurist chrome","Liquid chrome forms an abstract face above a luminous planetary horizon, deep starfield, electric blue and violet edge light, smooth 1980s airbrush gradients and elegant surreal geometry."],
+    ["Architectural interior","A monumental concrete library atrium at noon, one reader crossing the lower third, repeating skylight shadows, symmetrical deep-focus composition, quiet dust in the air and muted mineral colors."],
+    ["Night street","A late-night noodle shop on a narrow rain-polished street, cook framed through steamed glass, mixed cyan and amber practicals, realistic reflections, observational 35mm photography and intimate urban atmosphere."],
+    ["Fantasy key art","An exhausted knight resting beside an ancient luminous tree after battle, damaged practical armor, drifting ash, moonlit fog, wide anamorphic composition and grounded dark-fantasy realism."],
+    ["Food commercial","Fresh citrus soda poured over clear ice in a chilled glass, suspended droplets and crisp condensation, bright backlight, clean pale-blue set, high-speed commercial photography and appetizing color accuracy."],
   ];
   const grid=el("div","k2-discover-grid");
   prompts.forEach(([name,prompt])=>{const card=button(name,"k2-discover-card");card.onclick=()=>{store.set("prompt",prompt);view.hide();};grid.append(card);});
@@ -126,7 +148,9 @@ export function buildNodeUI(node, configWidget) {
     configWidget.callback?.(configWidget.value);
     node.setDirtyCanvas?.(true, true);
   });
-  const models={diffusion_models:[],text_encoders:[],vaes:[],loras:[],styles:[],samplers:[store.get("sampler") || "euler"],schedulers:[store.get("scheduler") || "simple"],capabilities:{}};
+  root.dataset.theme=store.get("theme")||"blue-snow";
+  applyCanvasNodeTheme(node,root.dataset.theme);
+  const models={diffusion_models:[],gguf_models:[],text_encoders:[],gguf_text_encoders:[],vaes:[],loras:[],styles:[],samplers:[store.get("sampler") || "euler"],schedulers:[store.get("scheduler") || "simple"],capabilities:{}};
   const sessionItems=[];
   let currentImage=null, currentMetadata=null, usedSeed=null, zoom=1;
 
@@ -147,10 +171,12 @@ export function buildNodeUI(node, configWidget) {
   const size=el("section","k2-block k2-film-size"), sizeHead=el("div","k2-block-head"); sizeHead.append(el("span","k2-section-index","01"),el("strong","","Film frame"));
   const dimensionBadge=el("span","k2-dimension-badge",`${store.get("width")} × ${store.get("height")}`);sizeHead.append(dimensionBadge);
   const sizeGrid=el("div","k2-vertical-form");
-  const presetItems=RESOLUTION_PRESETS.map(([label,w,h])=>({label,value:`${w}x${h}`}));
+  const presetTuples=RESOLUTION_PRESETS.flatMap(group=>group.items);
+  const presetItems=presetTuples.map(([label,w,h])=>({label,value:`${w}x${h}`}));
+  const presetGroups=RESOLUTION_PRESETS.map(group=>({group:group.group,items:group.items.map(([label,w,h])=>({label,value:`${w}x${h}`}))}));
   const currentDimensions=`${store.get("width")}x${store.get("height")}`;
   const initialPreset=presetItems.some(item=>item.value===currentDimensions)?currentDimensions:presetItems[0].value;
-  const preset=select(presetItems,initialPreset,value=>{customResolution.querySelector("input").checked=false;store.set("custom_resolution",false);applyPresetSize(value);renderCustomResolution();});
+  const preset=select(presetGroups,initialPreset,value=>{customResolution.querySelector("input").checked=false;store.set("custom_resolution",false);applyPresetSize(value);renderCustomResolution();});
   const aspect=select(FILM_FORMATS,store.get("aspect_ratio") || "1:1",value=>{store.set("aspect_ratio",value);if(value!=="custom")applyCalculatedSize();});
   const mp=stepper(Number(store.get("megapixels") || 1),.5,4,.1,value=>{store.set("megapixels",Number(value));applyCalculatedSize();});
   const width=number(store.get("width"),64,16384,8,value=>{store.set("width",value);store.set("aspect_ratio","custom");aspect.value="custom";dimensionBadge.textContent=`${value} × ${store.get("height")}`;});
@@ -222,7 +248,9 @@ export function buildNodeUI(node, configWidget) {
       }
       const note=el("p","k2-note","The installed KREA2 control extension supports LoRA strength and latent-size matching. Start/end percentages are hidden because that extension does not implement them.");modePanel.append(note);
     }else{
-      modePanel.append(el("p","k2-note","Text-to-image uses the native KREA2 loader, KREA text encoder, ComfyUI samplers, and selected VAE."));
+      const modelBackend=store.get("gguf.enabled")?"UnetLoaderGGUF":"the native KREA2 loader";
+      const clipBackend=store.get("gguf.clip_enabled")?"CLIPLoaderGGUF":"the native KREA text-encoder loader";
+      modePanel.append(el("p","k2-note",`Text-to-image uses ${modelBackend}, ${clipBackend}, the selected sampler engine, and VAE.`));
     }
   };
 
@@ -261,8 +289,9 @@ export function buildNodeUI(node, configWidget) {
   }
   advanced.ontoggle=()=>store.set("advanced",advanced.open);
   const previewToolbar=el("div","k2-preview-toolbar"), previewTitle=el("strong","","FINAL FILM FRAME");
+  const scrollZoom=toggle("Wheel zoom",store.get("scroll_zoom"),value=>store.set("scroll_zoom",value));scrollZoom.classList.add("k2-scroll-zoom");scrollZoom.title="Enable scroll-wheel zoom over the rendered image";
   const fit=button("Fit","k2-btn k2-btn-quiet"), one=button("1:1","k2-btn k2-btn-quiet"), zoomOut=button("−","k2-btn k2-btn-icon"),zoomIn=button("+","k2-btn k2-btn-icon"),copyImage=button("Copy","k2-btn k2-btn-quiet"),saveImage=button("Save","k2-btn k2-btn-quiet"),previewFull=button("⛶","k2-btn k2-btn-icon");
-  previewToolbar.append(previewTitle,fit,one,zoomOut,zoomIn,copyImage,saveImage,previewFull);
+  previewToolbar.append(previewTitle,scrollZoom,fit,one,zoomOut,zoomIn,copyImage,saveImage,previewFull);
   const viewport=el("div","k2-viewport"), placeholder=el("div","k2-placeholder");placeholder.append(el("span","","K2"),el("strong","","Your film frame will appear here"),el("small","","Rendered locally in ComfyUI · IMAGE output remains connected"));
   const outputImage=el("img","k2-output-image");outputImage.hidden=true;viewport.append(placeholder,outputImage);
   const previewFoot=el("div","k2-preview-foot"), seedText=el("span","","Seed: —"), autosave=toggle("Auto-save",store.get("auto_save"),v=>store.set("auto_save",v));previewFoot.append(seedText,autosave);
@@ -313,7 +342,9 @@ export function buildNodeUI(node, configWidget) {
     const defaults=await kreaApi.defaults();models.presets=defaults.presets;models.styles=defaults.styles||[];
     const preserveOrSelect=(path,items,suggested="")=>{const current=store.get(path);if(!items.includes(current))store.set(path,(suggested&&items.includes(suggested)?suggested:items[0])||"");};
     preserveOrSelect("model",data.diffusion_models,data.suggested?.model);
+    if((data.gguf_models||[]).length)preserveOrSelect("gguf.model",data.gguf_models,data.suggested?.gguf_model);
     preserveOrSelect("clip",data.text_encoders,data.suggested?.clip);
+    if((data.gguf_text_encoders||[]).length)preserveOrSelect("gguf.clip",data.gguf_text_encoders,data.suggested?.gguf_clip);
     const currentVae=store.get("vae")||"";
     if(!data.vaes.includes(currentVae)||/qwen_image_vae/i.test(currentVae))store.set("vae",data.suggested?.vae||data.vaes[0]||"");
     preserveOrSelect("control.lora",data.loras,data.suggested?.control_lora);
@@ -339,17 +370,25 @@ export function buildNodeUI(node, configWidget) {
   helpButton.onclick=()=>{const view=modal("KREA 2 FILM STUDIO HELP");view.body.innerHTML="<p>Choose the KREA 2 model, text encoder, and image VAE in Settings. Text to Film creates a new frame; Transform Frame preserves or restyles a reference; Directed Control follows a structural guide.</p><p>Describe the subject, lens, lighting, color grade, and mood in Scene Prompt. Press Ctrl/Cmd + Enter to render. IMAGE and LATENT remain available through the normal ComfyUI outputs.</p>";document.body.append(view.overlay);};
   fullButton.onclick=()=>root.requestFullscreen?.();previewFull.onclick=()=>viewport.requestFullscreen?.();
   expandPrompt.onclick=()=>{promptBlock.classList.toggle("is-expanded");expandPrompt.textContent=promptBlock.classList.contains("is-expanded")?"Collapse":"Expand";};
-  fit.onclick=()=>{zoom=1;outputImage.style.transform="scale(1)";outputImage.classList.remove("is-native");viewport.scrollTo(0,0);};
-  one.onclick=()=>{zoom=1;outputImage.style.transform="scale(1)";outputImage.classList.add("is-native");viewport.scrollTo(0,0);};
-  zoomIn.onclick=()=>{zoom=Math.min(4,zoom+.25);outputImage.style.transform=`scale(${zoom})`;};zoomOut.onclick=()=>{zoom=Math.max(.25,zoom-.25);outputImage.style.transform=`scale(${zoom})`;};
+  const applyPreviewZoom=next=>{zoom=Math.max(.25,Math.min(6,next));outputImage.style.transform=`scale(${zoom})`;viewport.classList.toggle("is-zoomed",zoom>1.001);};
+  fit.onclick=()=>{zoom=1;applyPreviewZoom(1);outputImage.classList.remove("is-native");viewport.scrollTo(0,0);};
+  one.onclick=()=>{zoom=1;applyPreviewZoom(1);outputImage.classList.add("is-native");viewport.scrollTo(0,0);};
+  zoomIn.onclick=()=>applyPreviewZoom(zoom+.25);zoomOut.onclick=()=>applyPreviewZoom(zoom-.25);
+  viewport.addEventListener("wheel",event=>{if(!store.get("scroll_zoom")||outputImage.hidden)return;event.preventDefault();event.stopPropagation();applyPreviewZoom(zoom*Math.exp(-event.deltaY*.0015));},{passive:false});
   copyImage.onclick=async()=>{if(!currentImage)return;try{const blob=await fetch(kreaApi.viewUrl(currentImage)).then(r=>r.blob());await navigator.clipboard.write([new ClipboardItem({[blob.type]:blob})]);}catch(error){showError(error);}};
-  saveImage.onclick=async()=>{if(!currentImage)return;if(currentImage.type!=="temp")return kreaApi.openFolder(currentImage).catch(showError);try{const saved=await kreaApi.saveTemp(currentImage,currentMetadata||{});currentImage=saved;saveImage.textContent="Saved";sessionItems.unshift({...saved,metadata:currentMetadata});}catch(error){showError(error);}};
+  saveImage.onclick=async()=>{if(!currentImage)return;if(store.get("auto_save")&&store.get("save_path"))return;if(currentImage.type!=="temp")return kreaApi.openFolder(currentImage).catch(showError);try{const saved=await kreaApi.saveTemp(currentImage,currentMetadata||{});currentImage=saved;saveImage.textContent="Saved";sessionItems.unshift({...saved,metadata:currentMetadata});}catch(error){showError(error);}};
 
   generate.onclick=async()=>{
     clearError();
     const ext=store.get("external")||{};
-    if(!store.get("model")&&!(ext.model&&hasConnectedInput(node,"model")))return showError(new Error("Select a KREA model in Settings or connect MODEL."));
-    if(!store.get("clip")&&!(ext.clip&&hasConnectedInput(node,"clip")))return showError(new Error("Select a KREA text encoder in Settings or connect CLIP."));
+    const externalModel=ext.model&&hasConnectedInput(node,"model");
+    const externalClip=ext.clip&&hasConnectedInput(node,"clip");
+    if(!externalModel&&store.get("gguf.enabled")&&models.capabilities.gguf_model===false)return showError(new Error("ComfyUI-GGUF is unavailable. Install or update it, restart ComfyUI, or disable GGUF in Settings."));
+    if(!externalModel&&store.get("gguf.enabled")&&!store.get("gguf.model"))return showError(new Error("Select a KREA 2 GGUF diffusion model in Settings."));
+    if(!externalModel&&!store.get("gguf.enabled")&&!store.get("model"))return showError(new Error("Select a KREA model in Settings or connect MODEL."));
+    if(!externalClip&&store.get("gguf.clip_enabled")&&models.capabilities.gguf_clip===false)return showError(new Error("The ComfyUI-GGUF text-encoder loader is unavailable. Install or update ComfyUI-GGUF, restart ComfyUI, or disable the GGUF text encoder in Settings."));
+    if(!externalClip&&store.get("gguf.clip_enabled")&&!store.get("gguf.clip"))return showError(new Error("Select a KREA GGUF text encoder in Settings."));
+    if(!externalClip&&!store.get("gguf.clip_enabled")&&!store.get("clip"))return showError(new Error("Select a KREA text encoder in Settings or connect CLIP."));
     if(!store.get("vae")&&!(ext.vae&&hasConnectedInput(node,"vae")))return showError(new Error("Select a KREA VAE in Settings or connect VAE."));
     if(store.get("mode")!=="t2i"&&!store.get("uploads.image")&&!hasConnectedInput(node,"image"))return showError(new Error("Upload an image or connect the IMAGE input."));
     if(store.get("mode")==="control"&&models.capabilities.control===false)return showError(new Error("KREA2 Control is unavailable because its installed nodes were not registered."));
@@ -378,7 +417,7 @@ export function buildNodeUI(node, configWidget) {
     sessionItems.unshift(...entries);
     const first=entries[0];currentImage={filename:first.filename,subfolder:first.subfolder,type:first.type};
     currentMetadata=first.metadata;outputImage.src=`${kreaApi.viewUrl(currentImage)}&t=${Date.now()}`;
-    saveImage.textContent=currentImage.type==="temp"?"Save":"Open";
+    const customSaved=!!(store.get("auto_save")&&store.get("save_path"));saveImage.textContent=customSaved?"Saved":currentImage.type==="temp"?"Save":"Open";saveImage.disabled=customSaved;saveImage.title=customSaved?`Saved automatically to ${store.get("save_path")}`:"";
     if(store.get("notification_sound"))playComplete();
   };
 
@@ -396,7 +435,7 @@ export function buildNodeUI(node, configWidget) {
     steps.value=store.get("steps");cfg.value=store.get("cfg");seed.value=store.get("seed");random.querySelector("input").checked=!!store.get("randomize_seed");
     sampler.value=store.get("sampler");scheduler.value=store.get("scheduler");presetSelect.value=store.get("preset")||"Custom";batch.value=String(store.get("batch_size")||1);
     denoiseControl.value=store.get("denoise");refinementToggle.querySelector("input").checked=!!store.get("refinement.enabled");refineSteps.value=store.get("refinement.steps");refineCfg.value=store.get("refinement.cfg");refineDenoise.value=store.get("refinement.denoise");
-    refineSampler.value=store.get("refinement.sampler");refineScheduler.value=store.get("refinement.scheduler");advanced.open=!!store.get("advanced");autosave.querySelector("input").checked=!!store.get("auto_save");
+    refineSampler.value=store.get("refinement.sampler");refineScheduler.value=store.get("refinement.scheduler");advanced.open=!!store.get("advanced");autosave.querySelector("input").checked=!!store.get("auto_save");scrollZoom.querySelector("input").checked=!!store.get("scroll_zoom");root.dataset.theme=store.get("theme")||"blue-snow";applyCanvasNodeTheme(node,root.dataset.theme);
     renderLoraChips();renderSamplingBackend();syncSockets(node,store);renderMode();
   }
   store.subscribe((path)=>{
@@ -404,9 +443,12 @@ export function buildNodeUI(node, configWidget) {
     if(path==="prompt"&&prompt.value!==store.get("prompt"))prompt.value=store.get("prompt")||"";
     if(path==="loras")renderLoraChips();
     if(path==="auto_save")autosave.querySelector("input").checked=!!store.get("auto_save");
+    if(path==="scroll_zoom")scrollZoom.querySelector("input").checked=!!store.get("scroll_zoom");
+    if(path==="theme"){root.dataset.theme=store.get("theme")||"blue-snow";applyCanvasNodeTheme(node,root.dataset.theme);}
     if(path==="advanced"){advanced.open=!!store.get("advanced");renderMode();}
     if(path==="res4lyf.enabled")renderSamplingBackend();
     if(path==="refinement.enabled")renderSamplingBackend();
+    if(path==="gguf.enabled"||path==="gguf.clip_enabled")renderMode();
   });
   async function bootstrapAssets(){let refresh=false;try{const assets=await kreaApi.ensureAssets();refresh=!!assets.changed;if(assets.restart_required)showError(new Error("KREA ControlNet nodes were installed. Restart ComfyUI once to activate Directed Control."));}catch(error){showError(new Error(`Managed asset check failed: ${error.message}`));}await refreshModels(refresh);}
   renderMode();renderSamplingBackend();syncSockets(node,store);bootstrapAssets().catch(showError);

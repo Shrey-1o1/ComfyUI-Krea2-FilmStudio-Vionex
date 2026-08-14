@@ -186,6 +186,8 @@ def _model_payload() -> dict[str, Any]:
     clips = _listed("text_encoders")
     vaes = _listed("vae")
     loras = _listed("loras")
+    gguf_models = _listed("unet_gguf")
+    gguf_clips = _listed("clip_gguf")
     by_basename = lambda values, filename: next(
         (name for name in values if Path(name.replace("\\", "/")).name.lower() == filename.lower()), ""
     )
@@ -198,11 +200,21 @@ def _model_payload() -> dict[str, Any]:
         "text_encoders": clips,
         "vaes": vaes,
         "loras": loras,
+        "gguf_models": gguf_models,
+        "gguf_text_encoders": gguf_clips,
         "samplers": list(comfy.samplers.KSampler.SAMPLERS),
         "schedulers": list(comfy.samplers.KSampler.SCHEDULERS),
         "suggested": {
             "model": next((name for name in models if "krea2" in name.lower() and "turbo" in name.lower()), "")
             or next((name for name in models if "krea2" in name.lower() or "krea-2" in name.lower()), ""),
+            "gguf_model": next(
+                (name for name in gguf_models if "krea2" in name.lower() or "krea-2" in name.lower()),
+                gguf_models[0] if gguf_models else "",
+            ),
+            "gguf_clip": next(
+                (name for name in gguf_clips if "qwen3vl" in name.lower() or "qwen3-vl" in name.lower()),
+                gguf_clips[0] if gguf_clips else "",
+            ),
             "clip": next((name for name in clips if "qwen3vl_4b" in name.lower()), ""),
             "vae": by_basename(vaes, "wan_2.1_vae.safetensors")
             or next((name for name in vaes if "qwen_image_vae" in name.lower()), ""),
@@ -211,7 +223,9 @@ def _model_payload() -> dict[str, Any]:
         },
         "paths": {
             "model": "/models/diffusion_models",
+            "gguf_model": "/models/diffusion_models or /models/unet · .gguf",
             "clip": "/models/text_encoders",
+            "gguf_clip": "/models/text_encoders or /models/clip · .gguf",
             "vae": "/models/vae",
             "loras": "/models/loras",
         },

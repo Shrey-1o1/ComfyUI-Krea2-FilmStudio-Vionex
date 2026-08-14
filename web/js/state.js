@@ -1,14 +1,21 @@
 export const RESOLUTION_PRESETS = [
-  ["Optimal Film 16:9 · 1928 × 1088", 1928, 1088],
-  ["Square Frame · 1024 × 1024", 1024, 1024],
-  ["Academy Portrait · 832 × 1216", 832, 1216],
-  ["Photo Landscape · 1216 × 832", 1216, 832],
-  ["Classic Portrait · 896 × 1152", 896, 1152],
-  ["Classic Frame · 1152 × 896", 1152, 896],
-  ["Vertical Film · 768 × 1344", 768, 1344],
-  ["Widescreen · 1344 × 768", 1344, 768],
-  ["Cinema Flat · 1408 × 768", 1408, 768],
-  ["CinemaScope · 1536 × 640", 1536, 640],
+  {group:"Recommended",items:[
+    ["Optimal Film 16:9 · 1928 × 1088",1928,1088],
+    ["Krea Square · 1024 × 1024",1024,1024],
+    ["Krea Square 2K · 2048 × 2048",2048,2048],
+  ]},
+  {group:"Horizontal",items:[
+    ["Krea Landscape · 1216 × 832",1216,832],
+    ["Classic Frame · 1152 × 896",1152,896],
+    ["Widescreen Film · 1344 × 768",1344,768],
+    ["Cinema Flat · 1408 × 768",1408,768],
+    ["CinemaScope · 1536 × 640",1536,640],
+  ]},
+  {group:"Vertical",items:[
+    ["Krea Portrait · 832 × 1216",832,1216],
+    ["Classic Portrait · 896 × 1152",896,1152],
+    ["Vertical Film · 768 × 1344",768,1344],
+  ]},
 ];
 
 export const FILM_FORMATS = [
@@ -115,7 +122,13 @@ export function metadataSnapshot(state, usedSeed) {
     steps: state.steps, cfg: state.cfg, sampler: state.sampler,
     scheduler: state.scheduler, denoise: state.mode === "i2i" ? state.i2i?.denoise : state.denoise,
     sampling_backend: state.res4lyf?.enabled !== false ? "RES4LYF recommended" : "Native KSampler",
-    model: state.model, clip: state.clip, vae: state.vae,
+    diversity: state.diversity,
+    theme: state.theme,
+    model_backend: state.gguf?.enabled ? "GGUF" : "Standard",
+    model: state.gguf?.enabled ? state.gguf?.model : state.model,
+    text_encoder_backend: state.gguf?.clip_enabled ? "GGUF" : "Standard",
+    clip: state.gguf?.clip_enabled ? state.gguf?.clip : state.clip,
+    vae: state.vae,
     loras: (state.loras || []).filter(item => item.enabled !== false),
     refinement: state.refinement,
     config: clone(state),

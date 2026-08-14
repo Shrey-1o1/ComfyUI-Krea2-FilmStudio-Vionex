@@ -35,11 +35,20 @@ export function select(items, value, onChange, className="") {
 
 export function setOptions(node, items, value) {
   const current = value ?? node.value;
-  node.replaceChildren(...(items || []).map(item => {
+  const makeOption = item => {
     const option = el("option");
     if (typeof item === "object") { option.value = item.value; option.textContent = item.label; }
     else { option.value = item; option.textContent = item; }
     return option;
+  };
+  node.replaceChildren(...(items || []).map(item => {
+    if (item && typeof item === "object" && Array.isArray(item.items)) {
+      const group = el("optgroup");
+      group.label = item.group || item.label || "";
+      group.append(...item.items.map(makeOption));
+      return group;
+    }
+    return makeOption(item);
   }));
   if ([...node.options].some(option => option.value === String(current))) node.value = current;
 }

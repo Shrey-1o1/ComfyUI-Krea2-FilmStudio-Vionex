@@ -69,6 +69,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "res4lyf": {
         "enabled": True,
     },
+    "gguf": {
+        "enabled": False,
+        "model": "",
+        "clip_enabled": False,
+        "clip": "",
+    },
     "model": "",
     "clip": "",
     "vae": "",
@@ -77,6 +83,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "loras": [],
     "advanced": False,
     "auto_save": True,
+    "save_path": "",
+    "scroll_zoom": False,
+    "theme": "blue-snow",
+    "prompt_crafter_url": "https://chatgpt.com/g/g-6a7ea7070fd0819196ae9307a5e70529-vionex-prompt-crafter",
     "notification_sound": False,
     "cinematic_style": "",
     "reference_downscale_mp": 1.0,
@@ -92,6 +102,11 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "sampler": "euler",
         "scheduler": "simple",
         "denoise": 0.27,
+    },
+    "diversity": {
+        "enabled": False,
+        "strength": 0.08,
+        "eta": 0.75,
     },
     "enhancer": {
         "enabled": False,

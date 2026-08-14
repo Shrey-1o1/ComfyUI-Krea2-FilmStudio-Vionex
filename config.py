@@ -6,7 +6,8 @@ from copy import deepcopy
 from dataclasses import dataclass
 import json
 import math
-from pathlib import PurePosixPath
+import os
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import comfy.samplers
@@ -158,6 +159,14 @@ def parse_config(raw: str, *, need_model: bool, need_clip: bool, need_vae: bool,
     data["prompt"] = str(data.get("prompt", ""))
     data["negative_prompt"] = str(data.get("negative_prompt", ""))
     data["custom_resolution"] = bool(data.get("custom_resolution", False))
+    data["scroll_zoom"] = bool(data.get("scroll_zoom", False))
+    data["theme"] = str(data.get("theme", "blue-snow"))
+    if data["theme"] not in {"red-fire", "blue-snow", "crimson", "glass"}:
+        raise ValueError("Studio theme must be Red Fire, Blue Snow, Crimson, or Glass.")
+    data["save_path"] = str(data.get("save_path", "")).strip()
+    if data["save_path"] and not Path(os.path.expandvars(data["save_path"])).expanduser().is_absolute():
+        raise ValueError("Custom image save path must be an absolute folder path.")
+    data["prompt_crafter_url"] = str(data.get("prompt_crafter_url", "")).strip()
     data["cinematic_style"] = str(data.get("cinematic_style", ""))
     if data["cinematic_style"] and data["cinematic_style"] not in CINEMATIC_STYLES:
         raise ValueError(f"Unknown cinematic style: {data['cinematic_style']}")
@@ -176,6 +185,12 @@ def parse_config(raw: str, *, need_model: bool, need_clip: bool, need_vae: bool,
     res4lyf = _mapping(data, "res4lyf")
     res4lyf["enabled"] = bool(res4lyf.get("enabled", True))
 
+    gguf = _mapping(data, "gguf")
+    gguf["enabled"] = bool(gguf.get("enabled", False))
+    gguf["model"] = str(gguf.get("model", ""))
+    gguf["clip_enabled"] = bool(gguf.get("clip_enabled", False))
+    gguf["clip"] = str(gguf.get("clip", ""))
+
     refinement = _mapping(data, "refinement")
     refinement["enabled"] = bool(refinement.get("enabled", True))
     refinement["steps"] = _integer(refinement.get("steps", 3), "Refinement steps", 1, 1000)
@@ -185,6 +200,11 @@ def parse_config(raw: str, *, need_model: bool, need_clip: bool, need_vae: bool,
         raise ValueError(f"Refinement sampler is not available: {refinement.get('sampler')}")
     if refinement.get("scheduler") not in schedulers:
         raise ValueError(f"Refinement scheduler is not available: {refinement.get('scheduler')}")
+
+    diversity = _mapping(data, "diversity")
+    diversity["enabled"] = bool(diversity.get("enabled", False))
+    diversity["strength"] = _number(diversity.get("strength", 0.08), "Diversity latent noise", 0, 1)
+    diversity["eta"] = _number(diversity.get("eta", 0.75), "Diversity RES4LYF eta", 0, 2)
 
     decode = _mapping(data, "vae_decode")
     if decode.get("mode") not in {"auto", "normal", "tiled"}:
@@ -230,9 +250,15 @@ def parse_config(raw: str, *, need_model: bool, need_clip: bool, need_vae: bool,
         external[key] = bool(external.get(key, False))
 
     if need_model:
-        data["model"] = _filename("diffusion_models", data.get("model", ""), "KREA model")
+        if gguf["enabled"]:
+            gguf["model"] = _filename("unet_gguf", gguf.get("model", ""), "KREA GGUF model")
+        else:
+            data["model"] = _filename("diffusion_models", data.get("model", ""), "KREA model")
     if need_clip:
-        data["clip"] = _filename("text_encoders", data.get("clip", ""), "KREA text encoder")
+        if gguf["clip_enabled"]:
+            gguf["clip"] = _filename("clip_gguf", gguf.get("clip", ""), "KREA GGUF text encoder")
+        else:
+            data["clip"] = _filename("text_encoders", data.get("clip", ""), "KREA text encoder")
     if need_vae:
         data["vae"] = _filename("vae", data.get("vae", ""), "KREA VAE")
 

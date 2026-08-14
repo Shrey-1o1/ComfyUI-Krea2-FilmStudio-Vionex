@@ -16,6 +16,8 @@ The package adds no Python dependencies beyond a working current ComfyUI install
 
 Film Studio also integrates [RES4LYF](https://github.com/ClownsharkBatwing/RES4LYF) as its default recommended sampler backend. The managed asset check installs the custom nodes when absent; restart ComfyUI once after that installation.
 
+Optional quantized diffusion models and text encoders are supported through [ComfyUI-GGUF](https://github.com/city96/ComfyUI-GGUF). Install that custom node and its `gguf` dependency. Place Krea 2 `.gguf` diffusion models in `models/diffusion_models/` or `models/unet/`, and compatible `.gguf` text encoders in `models/text_encoders/` or `models/clip/`.
+
 ## Required model files
 
 Use KREA 2-compatible files already supported by native ComfyUI. This installation's workflows reference a KREA diffusion model, a Qwen3-VL 4B KREA text encoder, and default to the Wan 2.1 VAE requested for Film Studio output. Filenames are examples only; the UI scans the actual configured ComfyUI model paths.
@@ -52,6 +54,8 @@ The **Cinematic style** menu contains ten VIONEX camera, lighting, color-grade, 
 
 The supplied Film workflow's quality negative prompt is included by default and can be edited in Advanced Film Controls.
 
+The Film Resolution menu is grouped into **Recommended**, **Horizontal**, and **Vertical** sections. The optimal 1928 × 1088 film frame remains first. Krea's official 1024 square, 832 × 1216 portrait, 1216 × 832 landscape, and opt-in 2048 square buckets are represented directly; Custom Resolution still unlocks arbitrary aligned dimensions.
+
 ## Sampling engines
 
 **Use RES4LYF recommended samplers (Recommended)** is enabled by default in Film Studio Settings. It expands to the exact two-node `ClownsharKSampler_Beta` chain used by the studio workflow:
@@ -62,6 +66,32 @@ The supplied Film workflow's quality negative prompt is included by default and 
 - T2I and Control use `VAEEncodeAdvanced` to create the required 16-channel empty latent when RES4LYF is installed.
 
 For T2I and Control, pass 1 uses denoise 1.00. For latent I2I it preserves the selected transform denoise so the reference-strength control still works. Advanced Film Controls enables/disables pass 2 and controls its steps, CFG, and denoise for RES4LYF; native KSampler uses the same refinement switch plus its sampler and scheduler fields.
+
+**Extra diversity noise injection** is off by default. When enabled, Film Studio injects deterministic low-amplitude latent noise before either sampler backend. With RES4LYF it also applies the selected SDE `eta` value, which controls the amount of noise added and removed after sampling steps. The setting is experimental and should be kept subtle for identity-sensitive work.
+
+## Studio experience
+
+- **Wheel zoom** appears in the preview toolbar. When enabled, the mouse wheel zooms the rendered frame from 25% to 600%; drag the viewport to pan.
+- **Red Fire**, **Blue Snow**, **Crimson**, and **Glass** themes are available in Settings. Blue Snow is the default.
+- **Automatic Save Folder** accepts an absolute local directory. When set with Auto-save enabled, Film Studio saves the PNG and metadata there while keeping a temporary ComfyUI preview available in the node.
+- **Prompt Crafter Link** is editable in Settings and defaults to the VIONEX Prompt Crafter custom GPT. The adjacent button opens the configured URL in a new tab.
+- **Discover** includes a larger collection of cinematic, editorial, landscape, product, macro, architecture, fantasy, food, and science-fiction starting prompts.
+
+## Standard and GGUF models
+
+Film Studio Settings includes independent **Use GGUF diffusion model** and **Use GGUF text encoder** toggles. Both are off by default, so Standard and GGUF components can be mixed:
+
+- off: the selected safetensors/FP8 model is loaded with native `UNETLoader`;
+- on: the selected `.gguf` model is loaded with `UnetLoaderGGUF` from ComfyUI-GGUF;
+- an externally connected `MODEL` input overrides either internal loader.
+
+For the text encoder:
+
+- off: the selected safetensors encoder is loaded with native `CLIPLoader` using Krea 2 type and the chosen placement;
+- on: the selected `.gguf` encoder is loaded with `CLIPLoaderGGUF` using Krea 2 type;
+- an externally connected `CLIP` input overrides either internal text-encoder loader.
+
+The Wan VAE remains a separate normal selection. Existing LoRA rows are applied after either model and text-encoder loader; ComfyUI-GGUF describes LoRA support as experimental, so GGUF/LoRA combinations should be validated for the specific quantization.
 
 ## I2I
 
