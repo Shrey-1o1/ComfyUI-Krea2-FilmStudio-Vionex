@@ -141,6 +141,11 @@ function discoverPrompt(store) {
 
 export function buildNodeUI(node, configWidget) {
   const root=el("div","k2-app");
+  root.classList.add("is-unlocking");
+  let unlockFallback=null;
+  const finishUnlock=()=>{root.classList.remove("is-unlocking");if(unlockFallback!==null){window.clearTimeout(unlockFallback);unlockFallback=null;}};
+  root.addEventListener("animationend",event=>{if(event.animationName==="k2-unlock-scan")finishUnlock();});
+  unlockFallback=window.setTimeout(finishUnlock,1100);
   const initial=parseState(configWidget.value);
   configWidget.value=JSON.stringify(initial);
   const store=new StateStore(initial, value => {
