@@ -1,0 +1,159 @@
+{
+  "id": "0be81ebb-3b3c-4de7-a6e2-b084fdf83eb1",
+  "revision": 0,
+  "last_node_id": 22,
+  "last_link_id": 1,
+  "nodes": [
+    {
+      "id": 15,
+      "type": "MarkdownNote",
+      "pos": [
+        -1803.1499711919514,
+        6080.8693808312655
+      ],
+      "size": [
+        520.7739353493816,
+        925.1237319362745
+      ],
+      "flags": {
+        "pinned": true
+      },
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "Download Models",
+      "properties": {},
+      "widgets_values": [
+        "# 🎬 **KREA 2 — Models & Installation Guide**\n\n> ✨ **Complete model setup for running KREA 2 inside ComfyUI**\n\n---\n\n## 🧩 Guide\n\n🔗 **ComfyUI Subgraph Guide**\n[📖 Subgraph Documentation](https://docs.comfy.org/interface/features/subgraph)\n\n---\n\n# 🤗 **MODEL DOWNLOADS**\n\n### 🚀 BF16 / NVFP4 Variants\n\nFor **BF16** and **NVFP4** versions of KREA 2:\n\n🔗 [**Comfy-Org / Krea-2**](https://huggingface.co/Comfy-Org/Krea-2)\n\n---\n\n## 🧠 `DIFFUSION MODEL`\n\n> 🔵 **Main KREA 2 generation model**\n\n📦 **`krea2_turbo_fp8_scaled.safetensors`**\n\n[⬇️ Download Diffusion Model](https://huggingface.co/Comfy-Org/Krea-2/resolve/main/diffusion_models/krea2_turbo_fp8_scaled.safetensors)\n\n📁 **Install to:**\n\n```text\nComfyUI/models/diffusion_models/\n```\n\n---\n\n## 💬 `TEXT ENCODER`\n\n> 🟣 **Qwen3-VL 4B FP8 Text Encoder**\n\n📦 **`qwen3vl_4b_fp8_scaled.safetensors`**\n\n[⬇️ Download Text Encoder](https://huggingface.co/Comfy-Org/Krea-2/resolve/main/text_encoders/qwen3vl_4b_fp8_scaled.safetensors)\n\n📁 **Install to:**\n\n```text\nComfyUI/models/text_encoders/\n```\n\n---\n\n## 🎨 `VAE`\n\n> 🟠 **Wan 2.1 VAE**\n\n📦 **`Wan_2.1_vae.safetensors`**\n\n[⬇️ Download VAE](https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/blob/main/split_files/vae/wan_2.1_vae.safetensors)\n\n📁 **Install to:**\n\n```text\nComfyUI/models/vae/\n```\n\n---\n\n# 🎞️ **KREA 2 LoRAs**\n\n### 📸 Canon Ultra Real\n\n> Photorealistic / camera-oriented KREA 2 LoRA\n\n[🔥 **KREA 2 — Canon UltraReal**](https://civitai.red/models/2783143/canon-ultrareal)\n\n### 🎥 Cinematic Movie Still\n\n> Cinematic film-frame / movie-still oriented KREA 2 LoRA\n\n[🎬 **KREA 2 — Cinematic Movie Still**](https://civitai.red/models/2840790/cinematic-movie-still)\n\n📁 **Install LoRAs to:**\n\n```text\nComfyUI/models/loras/\n```\n\n---\n\n# 🎛️ **CONTROLNET**\n\n## 🧩 Custom Node\n\n> 🟢 **KREA 2 ControlNet support for ComfyUI**\n\n🔗 [**KREACONTROLNET_NODE**](https://github.com/facok/comfyui-krea2-controlnet)\n\n📁 **Install to:**\n\n```text\nComfyUI/custom_nodes/comfyui-krea2-controlnet/\n```\n\n---\n\n## 🗺️ Depth ControlNet LoRA — `REQUIRED`\n\n> ⚠️ **Required for KREA 2 Depth ControlNet**\n\n🔗 [**KREACONTROLNET_LORA — KREA 2 Depth ControlNet**](https://huggingface.co/Patil/Krea-2-depth-controlnet/tree/main)\n\n📁 Place the required LoRA/model files in the appropriate **ComfyUI model directory** used by the ControlNet node.\n\n---\n\n# 📂 **MODEL STORAGE STRUCTURE**\n\n```text\n📂 ComfyUI/\n│\n├── 📂 models/\n│   │\n│   ├── 🧠 diffusion_models/\n│   │   └── 🚀 krea2_turbo_fp8_scaled.safetensors\n│   │\n│   ├── 💬 text_encoders/\n│   │   └── 🔤 qwen3vl_4b_fp8_scaled.safetensors\n│   │\n│   ├── 🎨 vae/\n│   │   └── 🖼️ Wan_2.1_vae.safetensors\n│   │\n│   └── 🎞️ loras/\n│       ├── 📸 krea2_CanonUltraReal.safetensors\n│       ├── 🎬 krea2_CinematicMovieStill.safetensors\n│       └── 🗺️ KREA2_Depth_ControlNet_LoRA.safetensors\n│\n└── 📂 custom_nodes/\n    └── 🧩 comfyui-krea2-controlnet/\n```\n\n---\n\n# ⚡ **QUICK SETUP**\n\n**1️⃣ Diffusion Model** → `models/diffusion_models/`\n**2️⃣ Qwen Text Encoder** → `models/text_encoders/`\n**3️⃣ VAE** → `models/vae/`\n**4️⃣ KREA LoRAs** → `models/loras/`\n**5️⃣ ControlNet Custom Node** → `custom_nodes/`\n**6️⃣ Depth ControlNet LoRA** → Install for ControlNet usage\n**7️⃣ Restart ComfyUI** 🔄\n\n---\n\n### 🎬 **KREA 2 • COMFYUI**\n\n**Generate • Stylize • Control • Create**\n"
+      ],
+      "color": "rgba(0,0,0,.8)",
+      "bgcolor": "rgba(24,24,27,.9)",
+      "shape": "round"
+    },
+    {
+      "id": 9,
+      "type": "MarkdownNote",
+      "pos": [
+        -1803.1499711919514,
+        5888.334666949615
+      ],
+      "size": [
+        520.7739353493816,
+        142.36161556572097
+      ],
+      "flags": {
+        "pinned": true
+      },
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "A complete **Krea 2 Film Studio** generation node built inside ComfyUI, designed to keep the entire image workflow inside one clean interface. It supports **Text-to-Image, Image-to-Image, Directed Control, custom resolutions, megapixel scaling, sampler settings, seeds, LoRA loading, prompt history, gallery, autosave, and model settings**, while still outputting a standard ComfyUI **IMAGE, LATENT, and used seed** for use with other nodes.\n\nThe goal is to make Krea 2 feel like a standalone creative studio while keeping everything fully local and integrated with ComfyUI.\n\n1MP For 720\n2MP For 1080"
+      ],
+      "color": "rgba(0,0,0,.8)",
+      "bgcolor": "rgba(24,24,27,.9)",
+      "shape": "round"
+    },
+    {
+      "id": 22,
+      "type": "MarkdownNote",
+      "pos": [
+        -1803.1499711919514,
+        7065.112204189392
+      ],
+      "size": [
+        520.7739353493816,
+        88
+      ],
+      "flags": {
+        "pinned": true
+      },
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "CUSTOM GPT FOR PROMPT GENERATION",
+      "properties": {},
+      "widgets_values": [
+        "[https://chatgpt.com/g/g-6a7ea7070fd0819196ae9307a5e70529-vionex-prompt-crafter](https://chatgpt.com/g/g-6a7ea7070fd0819196ae9307a5e70529-vionex-prompt-crafter)"
+      ],
+      "color": "#af3535",
+      "bgcolor": "rgba(24,24,27,.9)"
+    },
+    {
+      "id": 21,
+      "type": "Krea2OneNode",
+      "pos": [
+        -1249.0356211767232,
+        5888.334666949615
+      ],
+      "size": [
+        1742.9118130629017,
+        1264.7775372397773
+      ],
+      "flags": {
+        "pinned": true
+      },
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "prompt",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": null
+        },
+        {
+          "name": "latent",
+          "type": "LATENT",
+          "links": null
+        },
+        {
+          "name": "used_seed",
+          "type": "INT",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui_fearnworksnodes",
+        "ver": "0.1.2",
+        "Node name for S&R": "Krea2OneNode"
+      },
+      "widgets_values": [
+        "{\"version\":2,\"mode\":\"t2i\",\"preset\":\"Fast\",\"prompt\":\"A super-realistic cinematic wildlife shot of a powerful adult cheetah slowly walking through shallow water in the African wilderness during early morning.\\n\\nThe cheetah is captured in a low-angle medium shot, its body partially submerged up to the lower chest and belly. It walks directly toward the camera with a calm but intensely focused expression, head held slightly low, amber eyes locked forward, ears alert, and distinctive black tear markings clearly visible running from the inner corners of its eyes toward its mouth.\\n\\nEach slow step pushes through the water, creating realistic ripples around its legs and small droplets suspended in the air. Its front paw is captured just breaking through the water surface, producing a subtle cinematic splash.\\n\\nThe cheetah's golden coat is wet along its chest, belly, and legs, making the fur slightly darker and clumped together. Individual strands of wet fur, hundreds of natural black spots, whiskers, nose texture, muscular shoulders, and subtle breathing are rendered with extreme wildlife-photography realism.\\n\\nThe camera sits extremely low, almost touching the water surface, making the cheetah feel powerful while creating beautiful reflections across the foreground. Its distorted golden reflection stretches toward the camera through the rippling water.\\n\\nThe surrounding environment is a quiet African wetland with tall golden grasses, reeds, scattered acacia trees, and distant vegetation disappearing into soft morning mist. Thin layers of haze float just above the water.\\n\\nSoft golden sunrise light comes from behind the cheetah, creating a delicate rim light around its ears, shoulders, whiskers, and wet fur. The front of its face remains illuminated by soft natural sky fill, keeping the eyes clearly visible.\\n\\nCamera: professional wildlife cinematography, 300mm telephoto lens, f/2.8, water-level perspective, medium framing, cheetah filling approximately half the frame, strong telephoto compression.\\n\\nDepth of field: eyes and face critically sharp, shoulders and front legs detailed, rear body gradually softer, foreground water slightly blurred, distant reeds and trees transformed into creamy natural bokeh.\\n\\nColor grade: warm golden fur, amber sunrise highlights, muted olive-green vegetation, cool blue-gray water shadows, natural earthy tones, restrained saturation, subtle cinematic contrast.\\n\\nMood: quiet, powerful, intimate, tense, majestic wilderness.\\n\\nStyle: ultra-photorealistic BBC Earth / National Geographic-style wildlife cinematography, authentic cheetah anatomy and wet fur physics, realistic water interaction, natural lighting, documentary realism, premium telephoto photography, 16:9 cinematic frame, no text, no watermark.\",\"negative_prompt\":\"low quality, blurry, pixelated, bad anatomy, deformed body, extra limbs, malformed hands, extra fingers, distorted face, asymmetrical eyes, duplicate subjects, warped background, incorrect perspective, cropped limbs, plastic skin, unrealistic lighting, oversaturated, text, watermark, logo, CGI, cartoon, motion blur, flicker, jitter, morphing, temporal inconsistency\",\"width\":1928,\"height\":1088,\"alignment\":8,\"aspect_ratio\":\"4:3\",\"megapixels\":2,\"custom_resolution\":false,\"batch_size\":1,\"steps\":8,\"cfg\":1,\"seed\":3833890812013857,\"randomize_seed\":true,\"sampler\":\"euler\",\"scheduler\":\"simple\",\"denoise\":1,\"res4lyf\":{\"enabled\":true},\"model\":\"krea2_turbo_Bf16.safetensors\",\"clip\":\"qwen3vl_4b_fp8_scaled.safetensors\",\"vae\":\"wan_2.1_vae.safetensors\",\"weight_dtype\":\"default\",\"clip_device\":\"default\",\"loras\":[{\"name\":\"Krea 2\\\\canon_krea2.safetensors\",\"strength_model\":1,\"strength_clip\":1,\"enabled\":true,\"managed\":true},{\"name\":\"Krea 2\\\\cinematic_movie_still_krea2.safetensors\",\"strength_model\":0.8,\"strength_clip\":0.8,\"enabled\":true,\"managed\":true}],\"advanced\":false,\"auto_save\":true,\"notification_sound\":false,\"cinematic_style\":\"\",\"reference_downscale_mp\":1,\"vae_decode\":{\"mode\":\"tiled\",\"tile_size\":256,\"overlap\":64},\"refinement\":{\"enabled\":true,\"steps\":3,\"cfg\":1,\"sampler\":\"euler\",\"scheduler\":\"simple\",\"denoise\":0.27},\"enhancer\":{\"enabled\":false,\"behavior\":\"balanced\",\"max_length\":256,\"temperature\":0.7,\"top_k\":64,\"top_p\":0.95,\"repetition_penalty\":1.05,\"seed\":0,\"thinking\":false},\"i2i\":{\"pipeline\":\"latent\",\"denoise\":0.7,\"fit_mode\":\"crop\",\"ref_boost\":4,\"ref_boost_a\":1,\"grounding_px\":768},\"control\":{\"lora\":\"Krea 2\\\\depth-control-lora.safetensors\",\"strength\":1,\"resize\":\"match_latent_size\",\"upscale_method\":\"lanczos\",\"crop\":\"center\",\"channel_mode\":\"rgb\",\"normalize\":\"none\",\"invert\":false,\"preprocessor\":\"none\",\"preprocessor_resolution\":1024},\"external\":{\"model\":false,\"clip\":false,\"vae\":false},\"uploads\":{\"image\":\"KREA2_00058_.png\",\"image_2\":\"\"},\"gguf\":{\"clip_enabled\":false,\"enabled\":false},\"scroll_zoom\":true,\"theme\":\"blue-snow\"}",
+        ""
+      ],
+      "color": "#17436c",
+      "bgcolor": "#061526",
+      "boxcolor": "#8bc3ff"
+    }
+  ],
+  "links": [],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.7630656063776217,
+      "offset": [
+        1754.7956696475271,
+        -5635.0474197487465
+      ]
+    },
+    "frontendVersion": "1.48.7",
+    "VHS_latentpreview": false,
+    "VHS_latentpreviewrate": 0,
+    "VHS_MetadataImage": true,
+    "VHS_KeepIntermediate": true
+  },
+  "version": 0.4
+}
