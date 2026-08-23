@@ -6,8 +6,8 @@ import { openGallery } from "./gallery.js";
 import { openLoraBrowser } from "./lora_browser.js?v=film-studio-18";
 import { openPromptHistory, rememberPrompt } from "./prompt_history.js";
 import { openPromptStructure } from "./prompt_structure.js?v=film-studio-9";
-import { openSettings } from "./settings.js?v=film-studio-21";
-import { dimensionsFor, FILM_FORMATS, metadataSnapshot, parseState, RESOLUTION_PRESETS, StateStore } from "./state.js?v=film-studio-21";
+import { openSettings } from "./settings.js?v=film-studio-27";
+import { dimensionsFor, FILM_FORMATS, metadataSnapshot, parseState, RESOLUTION_PRESETS, StateStore } from "./state.js?v=film-studio-27";
 
 const MIN_NODE_WIDTH = 900;
 const MIN_UI_HEIGHT = 420;
@@ -102,11 +102,13 @@ function uploadZone(label, store, path, onError) {
   const zone = el("div", "k2-upload");
   const input = el("input"); input.type="file"; input.accept="image/*"; input.hidden=true;
   const icon=el("span","k2-upload-icon","▧"), title=el("strong","",label), name=el("span","k2-upload-name", store.get(path) || "Drop, paste, or choose an image");
-  zone.append(icon,title,name,input); zone.onclick=()=>input.click();
+  const clear=button("Remove","k2-upload-clear");clear.type="button";clear.title=`Remove ${label.toLowerCase()}`;clear.hidden=!store.get(path);
+  zone.append(icon,title,name,clear,input); zone.onclick=()=>input.click();
+  clear.onclick=event=>{event.preventDefault();event.stopPropagation();input.value="";store.set(path,"");name.textContent="Drop, paste, or choose an image";clear.hidden=true;};
   const load = async file => {
     if (!file) return;
     zone.classList.add("is-loading"); name.textContent="Uploading…";
-    try { const result=await kreaApi.upload(file); store.set(path,result.path); name.textContent=result.path; }
+    try { const result=await kreaApi.upload(file); store.set(path,result.path); name.textContent=result.path; clear.hidden=false; }
     catch(error){ onError(error); name.textContent="Upload failed"; }
     finally { zone.classList.remove("is-loading"); }
   };
@@ -229,6 +231,8 @@ export function buildNodeUI(node, configWidget) {
       if(store.get("i2i.pipeline")==="identity_edit"){
         modePanel.append(uploadZone("OPTIONAL SECOND REFERENCE",store,"uploads.image_2",showError));
         const grid=el("div","k2-inline-grid");grid.append(field("Fidelity",number(store.get("i2i.ref_boost"),0,1000,.1,v=>store.set("i2i.ref_boost",v))),field("Grounding px",number(store.get("i2i.grounding_px"),0,4096,64,v=>store.set("i2i.grounding_px",v))),field("Fit",select(["crop","fit"],store.get("i2i.fit_mode"),v=>store.set("i2i.fit_mode",v))));modePanel.append(grid);
+        const identityName=store.get("i2i.identity_lora")||models.suggested?.identity_lora||"";
+        modePanel.append(el("p",identityName?"k2-note":"k2-error",identityName?`Identity Edit v1.2 LoRA loads automatically: ${identityName.split(/[\\/]/).at(-1)}`:"KREA Identity Edit v1.2 LoRA is missing. Rescan models or reopen the node to install it."));
       }else{
         const grid=el("div","k2-inline-grid");grid.append(field("Denoise",number(store.get("i2i.denoise"),0,1,.01,v=>store.set("i2i.denoise",v))),field("Fit",select(["crop","fit","stretch"],store.get("i2i.fit_mode"),v=>store.set("i2i.fit_mode",v))));modePanel.append(grid);
       }
@@ -353,6 +357,8 @@ export function buildNodeUI(node, configWidget) {
     const currentVae=store.get("vae")||"";
     if(!data.vaes.includes(currentVae)||/qwen_image_vae/i.test(currentVae))store.set("vae",data.suggested?.vae||data.vaes[0]||"");
     preserveOrSelect("control.lora",data.loras,data.suggested?.control_lora);
+    const currentIdentity=store.get("i2i.identity_lora")||"";
+    if(!data.loras.includes(currentIdentity))store.set("i2i.identity_lora",data.suggested?.identity_lora||"");
     preserveOrSelect("sampler",data.samplers,"euler");
     preserveOrSelect("scheduler",data.schedulers,"simple");
     preserveOrSelect("refinement.sampler",data.samplers,store.get("sampler"));
@@ -375,11 +381,11 @@ export function buildNodeUI(node, configWidget) {
   helpButton.onclick=()=>{const view=modal("KREA 2 FILM STUDIO HELP");view.body.innerHTML="<p>Choose the KREA 2 model, text encoder, and image VAE in Settings. Text to Film creates a new frame; Transform Frame preserves or restyles a reference; Directed Control follows a structural guide.</p><p>Describe the subject, lens, lighting, color grade, and mood in Scene Prompt. Press Ctrl/Cmd + Enter to render. IMAGE and LATENT remain available through the normal ComfyUI outputs.</p>";document.body.append(view.overlay);};
   fullButton.onclick=()=>root.requestFullscreen?.();previewFull.onclick=()=>viewport.requestFullscreen?.();
   expandPrompt.onclick=()=>{promptBlock.classList.toggle("is-expanded");expandPrompt.textContent=promptBlock.classList.contains("is-expanded")?"Collapse":"Expand";};
-  const applyPreviewZoom=next=>{zoom=Math.max(.25,Math.min(6,next));outputImage.style.transform=`scale(${zoom})`;viewport.classList.toggle("is-zoomed",zoom>1.001);};
+  const applyPreviewZoom=next=>{zoom=Math.max(.25,Math.min(6,next));outputImage.style.transform=`scale(${zoom})`;outputImage.dataset.zoom=zoom.toFixed(3);viewport.classList.toggle("is-zoomed",Math.abs(zoom-1)>.001);};
   fit.onclick=()=>{zoom=1;applyPreviewZoom(1);outputImage.classList.remove("is-native");viewport.scrollTo(0,0);};
   one.onclick=()=>{zoom=1;applyPreviewZoom(1);outputImage.classList.add("is-native");viewport.scrollTo(0,0);};
   zoomIn.onclick=()=>applyPreviewZoom(zoom+.25);zoomOut.onclick=()=>applyPreviewZoom(zoom-.25);
-  viewport.addEventListener("wheel",event=>{if(!store.get("scroll_zoom")||outputImage.hidden)return;event.preventDefault();event.stopPropagation();applyPreviewZoom(zoom*Math.exp(-event.deltaY*.0015));},{passive:false});
+  viewport.addEventListener("wheel",event=>{if(!store.get("scroll_zoom")||outputImage.hidden)return;event.preventDefault();event.stopImmediatePropagation();applyPreviewZoom(zoom*Math.exp(-event.deltaY*.0015));},{passive:false,capture:true});
   copyImage.onclick=async()=>{if(!currentImage)return;try{const blob=await fetch(kreaApi.viewUrl(currentImage)).then(r=>r.blob());await navigator.clipboard.write([new ClipboardItem({[blob.type]:blob})]);}catch(error){showError(error);}};
   saveImage.onclick=async()=>{if(!currentImage)return;if(store.get("auto_save")&&store.get("save_path"))return;if(currentImage.type!=="temp")return kreaApi.openFolder(currentImage).catch(showError);try{const saved=await kreaApi.saveTemp(currentImage,currentMetadata||{});currentImage=saved;saveImage.textContent="Saved";sessionItems.unshift({...saved,metadata:currentMetadata});}catch(error){showError(error);}};
 
@@ -398,6 +404,7 @@ export function buildNodeUI(node, configWidget) {
     if(store.get("mode")!=="t2i"&&!store.get("uploads.image")&&!hasConnectedInput(node,"image"))return showError(new Error("Upload an image or connect the IMAGE input."));
     if(store.get("mode")==="control"&&models.capabilities.control===false)return showError(new Error("KREA2 Control is unavailable because its installed nodes were not registered."));
     if(store.get("mode")==="i2i"&&store.get("i2i.pipeline")==="identity_edit"&&models.capabilities.identity_edit===false)return showError(new Error("KREA Identity Edit is unavailable because its installed nodes were not registered."));
+    if(store.get("mode")==="i2i"&&store.get("i2i.pipeline")==="identity_edit"&&!store.get("i2i.identity_lora"))return showError(new Error("KREA Identity Edit v1.2 LoRA is missing. Reopen the node to install it, or rescan models in Settings."));
     if(store.get("mode")==="control"&&!store.get("control.lora"))return showError(new Error("Select the KREA Control LoRA."));
     rememberPrompt(store.get("prompt")||"");generate.disabled=true;generate.textContent="QUEUED…";stop.hidden=false;usedSeed=null;
     try{await app.queuePrompt(0,1);generate.textContent="GENERATING…";}catch(error){showError(error);}

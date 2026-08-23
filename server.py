@@ -22,6 +22,7 @@ import folder_paths
 from server import PromptServer
 
 from .providers import Krea2Provider
+from .config import suggest_identity_edit_lora
 from .settings import PRESETS, default_config
 from .styles import style_payload
 
@@ -54,6 +55,17 @@ MANAGED_FILES = (
         ),
         "url": "https://civitai.com/api/download/models/3206785",
         "sha256": "94A23A044D718FF050E3CA595BB9840EDD93384FB6ED86DAE13FDFA1C2EE5B4E",
+    },
+    {
+        "id": "identity_edit_v1_2",
+        "folder": "loras",
+        "subfolder": "Krea 2",
+        "filename": "krea2_identity_edit_v1_2.safetensors",
+        "aliases": (
+            r"krea.?2.*identity.*edit.*v1[_-]?2\.safetensors$",
+        ),
+        "url": "https://huggingface.co/conradlocke/krea2-identity-edit/resolve/main/krea2_identity_edit_v1_2.safetensors",
+        "sha256": "6ADF9A69CC9502D286DB7B69964D37DA7E9CFE4B05B4D004BC275F087D3FD3CF",
     },
     {
         "id": "depth_control",
@@ -219,6 +231,7 @@ def _model_payload() -> dict[str, Any]:
             "vae": by_basename(vaes, "wan_2.1_vae.safetensors")
             or next((name for name in vaes if "qwen_image_vae" in name.lower()), ""),
             "managed_loras": recommended_loras,
+            "identity_lora": suggest_identity_edit_lora(loras),
             "control_lora": by_basename(loras, "depth-control-lora.safetensors"),
         },
         "paths": {

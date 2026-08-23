@@ -8,6 +8,7 @@ import json
 import math
 import os
 from pathlib import Path, PurePosixPath
+import re
 from typing import Any
 
 import comfy.samplers
@@ -87,6 +88,25 @@ def _filename(folder: str, value: str, label: str, required: bool = True) -> str
     return resolved
 
 
+def suggest_identity_edit_lora(names: list[str] | tuple[str, ...]) -> str:
+    """Return the best installed Krea 2 Identity Edit weight, preferring full v1.2."""
+
+    candidates = [
+        name for name in names
+        if re.search(r"krea.?2.*identity.*edit.*\.safetensors$", PurePosixPath(str(name).replace("\\", "/")).name, re.IGNORECASE)
+    ]
+    if not candidates:
+        return ""
+
+    def rank(name: str) -> tuple[int, int, str]:
+        basename = PurePosixPath(str(name).replace("\\", "/")).name.casefold()
+        version_rank = 3 if "v1_2" in basename or "v1-2" in basename else 2 if "v1_1" in basename or "v1-1" in basename else 1
+        capacity_rank = 2 if "_r64" not in basename and "_r128" not in basename else 1 if "_r128" in basename else 0
+        return version_rank, capacity_rank, basename
+
+    return max(candidates, key=rank)
+
+
 @dataclass(frozen=True)
 class LoraSpec:
     name: str
@@ -134,6 +154,13 @@ def parse_config(raw: str, *, need_model: bool, need_clip: bool, need_vae: bool,
         decode = incoming.setdefault("vae_decode", {})
         if isinstance(decode, dict) and decode.get("mode", "auto") == "auto":
             decode.update(mode="tiled", tile_size=256, overlap=64)
+    if incoming_version < 3:
+        incoming = deepcopy(incoming)
+        incoming["version"] = 3
+        i2i_migration = incoming.setdefault("i2i", {})
+        if isinstance(i2i_migration, dict):
+            i2i_migration["fit_mode"] = "fit"
+            i2i_migration.setdefault("identity_lora", "")
 
     data = _merge(DEFAULT_CONFIG, incoming)
     mode = str(data.get("mode", "t2i")).lower()
@@ -232,6 +259,7 @@ def parse_config(raw: str, *, need_model: bool, need_clip: bool, need_vae: bool,
     i2i["denoise"] = _number(i2i.get("denoise", 0.65), "I2I denoise", 0, 1)
     if i2i.get("fit_mode") not in {"crop", "fit", "stretch"}:
         raise ValueError("I2I fit mode must be crop, fit, or stretch.")
+    i2i["identity_lora"] = str(i2i.get("identity_lora", "")).strip()
     i2i["ref_boost"] = _number(i2i.get("ref_boost", 4), "Identity fidelity", 0, 1000)
     i2i["ref_boost_a"] = _number(i2i.get("ref_boost_a", 1), "Identity reference A boost", 0, 1000)
     i2i["grounding_px"] = _integer(i2i.get("grounding_px", 768), "Identity grounding pixels", 64, 8192)
@@ -248,6 +276,10 @@ def parse_config(raw: str, *, need_model: bool, need_clip: bool, need_vae: bool,
     external = _mapping(data, "external")
     for key in ("model", "clip", "vae"):
         external[key] = bool(external.get(key, False))
+
+    if mode == "i2i" and i2i.get("pipeline") == "identity_edit":
+        selected_identity_lora = i2i["identity_lora"] or suggest_identity_edit_lora(folder_paths.get_filename_list("loras"))
+        i2i["identity_lora"] = _filename("loras", selected_identity_lora, "KREA Identity Edit LoRA")
 
     if need_model:
         if gguf["enabled"]:

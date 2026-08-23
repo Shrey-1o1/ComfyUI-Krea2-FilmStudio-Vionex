@@ -47,7 +47,7 @@ PRESETS: dict[str, dict[str, Any]] = {
 
 
 DEFAULT_CONFIG: dict[str, Any] = {
-    "version": 2,
+    "version": 3,
     "mode": "t2i",
     "preset": "Fast",
     "prompt": "",
@@ -122,7 +122,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "i2i": {
         "pipeline": "latent",
         "denoise": 0.65,
-        "fit_mode": "crop",
+        "fit_mode": "fit",
+        "identity_lora": "",
         "ref_boost": 4.0,
         "ref_boost_a": 1.0,
         "grounding_px": 768,

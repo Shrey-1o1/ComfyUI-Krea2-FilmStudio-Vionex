@@ -70,6 +70,7 @@ export function openSettings({store, models, refreshModels, syncSockets, showErr
     assetList.append(
       assetRow("Canon UltraReal", "Managed LoRA · always enabled", "https://civitai.red/models/2783143/canon-ultrareal", managedNames.some(name=>/canon_krea2\.safetensors$/i.test(name))),
       assetRow("Cinematic Movie Still", "Managed LoRA · always enabled", "https://civitai.red/models/2840790/cinematic-movie-still", managedNames.some(name=>/cinematic_movie_still_krea2\.safetensors$/i.test(name))),
+      assetRow("KREA Identity Edit v1.2", "Loaded automatically for Identity Edit", "https://huggingface.co/conradlocke/krea2-identity-edit/blob/main/krea2_identity_edit_v1_2.safetensors", !!models.suggested?.identity_lora),
       assetRow("KREA Depth Control", "Required depth LoRA", "https://huggingface.co/Patil/Krea-2-depth-controlnet/tree/main", !!models.suggested?.control_lora),
       assetRow("KREA ControlNet nodes", "Native control workflow", "https://github.com/facok/comfyui-krea2-controlnet", models.capabilities?.control!==false),
       assetRow("RES4LYF", "Recommended two-pass sampler engine", "https://github.com/ClownsharkBatwing/RES4LYF", models.capabilities?.res4lyf!==false),

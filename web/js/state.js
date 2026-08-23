@@ -58,6 +58,10 @@ export function parseState(raw) {
         value.vae_decode = {...(value.vae_decode || {}),mode:"tiled",tile_size:256,overlap:64};
       }
     }
+    if (Number(value.version || 1) < 3) {
+      value.version = 3;
+      value.i2i = {...(value.i2i || {}),fit_mode:"fit",identity_lora:value.i2i?.identity_lora||""};
+    }
     value.enhancer = {...(value.enhancer || {}),enabled:false};
     return value;
   } catch (_) { return {}; }

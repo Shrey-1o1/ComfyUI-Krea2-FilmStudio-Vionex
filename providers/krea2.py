@@ -102,8 +102,18 @@ class Krea2Provider(BaseGenerationProvider):
         return positive.out(0), negative_node.out(0)
 
     @staticmethod
-    def _apply_loras(builder: GraphBuilder, model: list[Any], clip: list[Any], config: GenerationConfig) -> tuple[list[Any], list[Any]]:
+    def _apply_loras(
+        builder: GraphBuilder,
+        model: list[Any],
+        clip: list[Any],
+        config: GenerationConfig,
+        *,
+        exclude: set[str] | None = None,
+    ) -> tuple[list[Any], list[Any]]:
+        excluded = {name.replace("\\", "/").casefold() for name in (exclude or set())}
         for spec in config.loras:
+            if spec.name.replace("\\", "/").casefold() in excluded:
+                continue
             node = builder.node(
                 "LoraLoader",
                 model=model,
@@ -347,7 +357,24 @@ class Krea2Provider(BaseGenerationProvider):
                 strength=float(control["strength"]),
             ).out(0)
 
-        model, clip = self._apply_loras(builder, model, clip, config)
+        identity_lora = ""
+        if data["mode"] == "i2i" and data["i2i"].get("pipeline") == "identity_edit":
+            identity_lora = str(data["i2i"]["identity_lora"])
+        model, clip = self._apply_loras(
+            builder,
+            model,
+            clip,
+            config,
+            exclude={identity_lora} if identity_lora else None,
+        )
+        if identity_lora:
+            LOGGER.info("Krea 2 Film Studio: applying required Identity Edit LoRA %s at model strength 1.0.", identity_lora)
+            model = builder.node(
+                "LoraLoaderModelOnly",
+                model=model,
+                lora_name=identity_lora,
+                strength_model=1.0,
+            ).out(0)
         prompt = raw_inputs.get("prompt") if is_link(raw_inputs.get("prompt")) else data["prompt"]
         suffix = style_suffix(str(data.get("cinematic_style", "")))
         if suffix:
@@ -388,7 +415,8 @@ class Krea2Provider(BaseGenerationProvider):
                 "system_prompt": "",
             }
             neg_inputs = dict(cond_inputs)
-            neg_inputs["prompt"] = str(data["negative_prompt"])
+            # Identity Edit was trained with an empty grounded unconditional prompt.
+            neg_inputs["prompt"] = ""
             if image_2:
                 model_inputs.update({"source_latent_b": source_latent_2, "source_image_b": image_2})
                 cond_inputs["image_b"] = image_2
