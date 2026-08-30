@@ -27,6 +27,7 @@ class Krea2Provider(BaseGenerationProvider):
         return {
             "t2i": True,
             "i2i": True,
+            "multi_reference": True,
             "identity_edit": _node_available("Krea2EditModelPatch") and _node_available("Krea2EditGroundedEncode"),
             "control": all(_node_available(name) for name in (
                 "Krea2ControlLoRALoader",
@@ -383,6 +384,38 @@ class Krea2Provider(BaseGenerationProvider):
 
         if data["mode"] == "t2i":
             positive, negative = self._conditioning(builder, clip, prompt, str(data["negative_prompt"]))
+            latent = self._empty_latent(builder, vae, config)
+            denoise = 1.0
+
+        elif data["mode"] == "references":
+            reference_inputs: dict[str, Any] = {}
+            for index, key in enumerate(("image", "image_2", "image_3", "image_4"), start=1):
+                raw_image = raw_inputs.get(key)
+                filename = uploads.get(key, "")
+                if not is_link(raw_image) and not filename:
+                    continue
+                reference_inputs[f"image{index}"] = self._image_source(
+                    builder,
+                    raw_image,
+                    filename,
+                    f"Reference Studio image {index}",
+                )
+            if not reference_inputs:
+                raise ValueError("Reference Studio requires at least one uploaded image or connected IMAGE input.")
+            reference = data["multi_reference"]
+            positive = builder.node(
+                "Krea2MultiReferenceEncode",
+                clip=clip,
+                prompt=prompt,
+                system_prompt=reference.get("system_prompt", ""),
+                vision_megapixels=float(reference.get("vision_megapixels", 0.3)),
+                vision_position=reference.get("vision_position", "before prompt"),
+                **reference_inputs,
+            ).out(0)
+            if str(data["negative_prompt"]).strip():
+                negative = builder.node("CLIPTextEncode", clip=clip, text=str(data["negative_prompt"])).out(0)
+            else:
+                negative = builder.node("ConditioningZeroOut", conditioning=positive).out(0)
             latent = self._empty_latent(builder, vae, config)
             denoise = 1.0
 

@@ -72,7 +72,9 @@ For T2I and Control, pass 1 uses denoise 1.00. For latent I2I it preserves the s
 ## Studio experience
 
 - **Wheel zoom** appears in the preview toolbar. When enabled, the mouse wheel zooms the rendered frame from 25% to 600%; drag the viewport to pan.
-- **Red Fire**, **Blue Snow**, **Crimson**, and **Glass** themes are available in Settings. Blue Snow is the default.
+- **Compare** overlays the first uploaded reference on the generated frame with a draggable before/after divider. It is enabled only when both a render and an uploaded reference are available.
+- **Red Fire**, **Blue Snow**, **Crimson**, **Glass**, and **Black** themes are available in Settings. Blue Snow is the default.
+- The footer records total generated images, the latest prompt-to-result time, average render time, and current frame dimensions per saved studio node.
 - **Automatic Save Folder** accepts an absolute local directory. When set with Auto-save enabled, Film Studio saves the PNG and metadata there while keeping a temporary ComfyUI preview available in the node.
 - **Prompt Crafter Link** is editable in Settings and defaults to the VIONEX Prompt Crafter custom GPT. The adjacent button opens the configured URL in a new tab.
 - **Discover** includes a larger collection of cinematic, editorial, landscape, product, macro, architecture, fantasy, food, and science-fiction starting prompts.
@@ -98,6 +100,14 @@ The Wan VAE remains a separate normal selection. Existing LoRA rows are applied 
 Select **I2I → Latent I2I**, upload/drop/paste an image or connect the `IMAGE` socket, then set denoise and fit mode. Crop preserves aspect while filling the canvas, Fit preserves the whole image with letterboxing, and Stretch fills the exact dimensions. The prepared image is VAE-encoded and sampled through native `KSampler`.
 
 Reference downscaling affects only source/control images; it never changes the selected final generation dimensions.
+
+## Reference Studio (multi-reference)
+
+Reference Studio accepts up to four ordered images and feeds them through the Krea2 Qwen3-VL vision path as native conditioning tokens. The prompt can refer to them as **Image 1**, **Image 2**, **Image 3**, and **Image 4**. Four built-in example prompts cover character/wardrobe/set composition, two-person scenes, product campaigns, and creature concept shots.
+
+The default 0.3 MP vision cap follows the balanced multi-reference workflow shown in the studio reference. Vision conditioning is placed before the user prompt by default. Krea2's vision tower may reject FP8 text-encoder weights; if that happens, select a BF16/FP16 Qwen3-VL-4B Krea2 encoder or a compatible GGUF encoder.
+
+The built-in vision-token assembly is based on the MIT-licensed [ComfyUI-Krea2TextEncoder](https://github.com/ethanfel/ComfyUI-Krea2TextEncoder) implementation by ethanfel. No separate custom-node installation is required for Film Studio's fixed four-slot interface.
 
 ## KREA Identity Edit / multiple references
 

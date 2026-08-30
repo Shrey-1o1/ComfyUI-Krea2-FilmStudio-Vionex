@@ -1,4 +1,4 @@
-import {button, el, field, modal, number, section, select, textInput, toggle} from "./components.js?v=film-studio-21";
+import {button, el, field, modal, number, section, select, textInput, toggle} from "./components.js?v=film-studio-28";
 
 function loraRow(store, item, index, models, render) {
   const row = el("div", "k2-lora-row");
@@ -75,6 +75,7 @@ export function openSettings({store, models, refreshModels, syncSockets, showErr
       assetRow("KREA ControlNet nodes", "Native control workflow", "https://github.com/facok/comfyui-krea2-controlnet", models.capabilities?.control!==false),
       assetRow("RES4LYF", "Recommended two-pass sampler engine", "https://github.com/ClownsharkBatwing/RES4LYF", models.capabilities?.res4lyf!==false),
       assetRow("ComfyUI-GGUF", "Optional quantized diffusion and text-encoder loaders", "https://github.com/city96/ComfyUI-GGUF", models.capabilities?.gguf_model!==false&&models.capabilities?.gguf_clip!==false),
+      assetRow("Krea2 Multi-Reference", "Built-in ordered Qwen3-VL vision conditioning", "https://github.com/ethanfel/ComfyUI-Krea2TextEncoder", models.capabilities?.multi_reference!==false),
       assetRow("Wan 2.1 VAE", "Default Film Studio decoder", "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/blob/main/split_files/vae/wan_2.1_vae.safetensors", /wan_2\.1_vae\.safetensors$/i.test(models.suggested?.vae||"")),
     );
     assets.append(assetList);
@@ -147,7 +148,7 @@ export function openSettings({store, models, refreshModels, syncSockets, showErr
     const prefs = section("Studio preferences");
     prefs.append(
       field("STUDIO THEME",select([
-        {label:"Red Fire",value:"red-fire"},{label:"Blue Snow",value:"blue-snow"},{label:"Crimson",value:"crimson"},{label:"Glass",value:"glass"},
+        {label:"Red Fire",value:"red-fire"},{label:"Blue Snow",value:"blue-snow"},{label:"Crimson",value:"crimson"},{label:"Glass",value:"glass"},{label:"Black",value:"black"},
       ],store.get("theme")||"blue-snow",value=>{store.set("theme",value);view.overlay.dataset.theme=value;})),
       toggle("Notification sound", store.get("notification_sound"), value => store.set("notification_sound", value)),
       toggle("Advanced controls", store.get("advanced"), value => store.set("advanced", value)),

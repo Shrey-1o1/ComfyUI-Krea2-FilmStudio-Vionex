@@ -62,6 +62,18 @@ export function parseState(raw) {
       value.version = 3;
       value.i2i = {...(value.i2i || {}),fit_mode:"fit",identity_lora:value.i2i?.identity_lora||""};
     }
+    if (Number(value.version || 1) < 4) {
+      value.version = 4;
+      value.compare_enabled = false;
+      value.uploads = {...(value.uploads || {}),image_3:"",image_4:""};
+      value.multi_reference = {
+        vision_megapixels:.3,
+        vision_position:"before prompt",
+        system_prompt:"Study every numbered reference image, preserve the requested identity, object, wardrobe, style, lighting, and environment cues, then combine them into one coherent new shot that follows the user's spatial instructions. Treat Image N and Picture N as the same reference.",
+        ...(value.multi_reference || {}),
+      };
+      value.stats = {images_generated:0,renders_completed:0,total_render_ms:0,last_render_ms:0,last_batch:0,last_completed_at:"",...(value.stats || {})};
+    }
     value.enhancer = {...(value.enhancer || {}),enabled:false};
     return value;
   } catch (_) { return {}; }
@@ -127,6 +139,7 @@ export function metadataSnapshot(state, usedSeed) {
     scheduler: state.scheduler, denoise: state.mode === "i2i" ? state.i2i?.denoise : state.denoise,
     sampling_backend: state.res4lyf?.enabled !== false ? "RES4LYF recommended" : "Native KSampler",
     diversity: state.diversity,
+    references: state.mode === "references" ? state.multi_reference : undefined,
     theme: state.theme,
     model_backend: state.gguf?.enabled ? "GGUF" : "Standard",
     model: state.gguf?.enabled ? state.gguf?.model : state.model,

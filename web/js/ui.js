@@ -1,23 +1,38 @@
 import { app } from "../../../scripts/app.js";
 import { api } from "../../../scripts/api.js";
 import { kreaApi } from "./api.js";
-import { button, el, field, modal, number, select, setOptions, stepper, toggle } from "./components.js?v=film-studio-21";
+import { button, el, field, modal, number, select, setOptions, stepper, toggle } from "./components.js?v=film-studio-28";
 import { openGallery } from "./gallery.js";
 import { openLoraBrowser } from "./lora_browser.js?v=film-studio-18";
 import { openPromptHistory, rememberPrompt } from "./prompt_history.js";
 import { openPromptStructure } from "./prompt_structure.js?v=film-studio-9";
-import { openSettings } from "./settings.js?v=film-studio-27";
-import { dimensionsFor, FILM_FORMATS, metadataSnapshot, parseState, RESOLUTION_PRESETS, StateStore } from "./state.js?v=film-studio-27";
+import { openSettings } from "./settings.js?v=film-studio-28";
+import { dimensionsFor, FILM_FORMATS, metadataSnapshot, parseState, RESOLUTION_PRESETS, StateStore } from "./state.js?v=film-studio-28";
 
 const MIN_NODE_WIDTH = 900;
 const MIN_UI_HEIGHT = 420;
-const SOCKET_TYPES = {prompt:"STRING",image:"IMAGE",image_2:"IMAGE",model:"MODEL",clip:"CLIP",vae:"VAE"};
+const SOCKET_TYPES = {prompt:"STRING",image:"IMAGE",image_2:"IMAGE",image_3:"IMAGE",image_4:"IMAGE",model:"MODEL",clip:"CLIP",vae:"VAE"};
 const NODE_THEME_PALETTES = {
   "red-fire": {title:"#6e2418",body:"#170705",box:"#ff825f"},
   "blue-snow": {title:"#17436c",body:"#061526",box:"#8bc3ff"},
   "crimson": {title:"#641832",body:"#17040b",box:"#ff557d"},
   "glass": {title:"#415d79",body:"#0d1b2a",box:"#b8d5ff"},
+  "black": {title:"#191919",body:"#030303",box:"#d8d8d8"},
 };
+
+const MULTI_REFERENCE_EXAMPLES = [
+  ["Character + wardrobe + set", "Create one photorealistic cinematic shot using the same person and facial identity from Image 1, dressed in the complete wardrobe from Image 2, standing inside the environment from Image 3. Use Image 4 only for the lighting and color palette. Keep natural anatomy, consistent scale, and a single coherent camera perspective."],
+  ["Two people in one scene", "Place the person from Image 1 and the person from Image 2 together in one medium-wide film still. Preserve each person's recognizable face, hair, and clothing. Stage them beside the vehicle from Image 3 in the location from Image 4, with realistic eyelines, contact shadows, and no duplicated subjects."],
+  ["Product campaign composite", "Create a premium product campaign image featuring the exact product design from Image 1 on the surface from Image 2. Borrow the architectural background from Image 3 and the soft directional lighting from Image 4. Produce one unified commercial photograph with accurate materials, reflections, and proportions."],
+  ["Creature concept shot", "Build one grounded fantasy film frame: use the creature anatomy and markings from Image 1, the rider costume from Image 2, the mountain environment from Image 3, and the storm atmosphere from Image 4. Show the rider mounted naturally on the creature in a dramatic wide shot with believable scale and motion."],
+];
+
+function inputImageDescriptor(path) {
+  const normalized=String(path||"").replaceAll("\\","/").replace(/^\/+/,"");
+  if(!normalized)return null;
+  const parts=normalized.split("/").filter(Boolean),filename=parts.pop();
+  return filename?{filename,subfolder:parts.join("/"),type:"input"}:null;
+}
 
 function applyCanvasNodeTheme(node, theme) {
   const palette=NODE_THEME_PALETTES[theme]||NODE_THEME_PALETTES["blue-snow"];
@@ -67,6 +82,7 @@ function syncSockets(node, store) {
   const wanted = new Set(["prompt"]);
   if (store.get("mode") !== "t2i") wanted.add("image");
   if (store.get("mode") === "i2i" && store.get("i2i.pipeline") === "identity_edit") wanted.add("image_2");
+  if (store.get("mode") === "references") ["image_2","image_3","image_4"].forEach(name=>wanted.add(name));
   Object.entries(external).forEach(([name, enabled]) => { if (enabled) wanted.add(name); });
   Object.keys(SOCKET_TYPES).forEach(name => {
     const index = (node.inputs || []).findIndex(input => input.name === name);
@@ -159,7 +175,8 @@ export function buildNodeUI(node, configWidget) {
   applyCanvasNodeTheme(node,root.dataset.theme);
   const models={diffusion_models:[],gguf_models:[],text_encoders:[],gguf_text_encoders:[],vaes:[],loras:[],styles:[],samplers:[store.get("sampler") || "euler"],schedulers:[store.get("scheduler") || "simple"],capabilities:{}};
   const sessionItems=[];
-  let currentImage=null, currentMetadata=null, usedSeed=null, zoom=1;
+  let currentImage=null, currentMetadata=null, usedSeed=null, zoom=1, comparePosition=50;
+  let renderStartedAt=null, renderClock=null;
 
   const header=el("header","k2-header");
   const brand=el("div","k2-brand");
@@ -171,8 +188,8 @@ export function buildNodeUI(node, configWidget) {
 
   const tabs=el("nav","k2-tabs");tabs.setAttribute("aria-label","Film Studio mode");
   const tabButtons={};
-  const modeCopy={t2i:["Text to Film (T2I)","Create a new cinematic frame"],i2i:["Transform Frame (I2I)","Restyle or preserve a reference"],control:["Directed Control (ControlNet)","Guide structure with a control map"]};
-  ["t2i","i2i","control"].forEach(mode=>{const tab=button("","k2-tab");tab.append(el("strong","",modeCopy[mode][0]),el("small","",modeCopy[mode][1]));tab.addEventListener("pointerdown",()=>{const source=node._k2UserSize||node._k2StableSize||node.size;tab._k2PreservedSize=Array.isArray(source)?[source[0],source[1]]:null;},{capture:true});tab.onclick=()=>{const exact=preserveNodeSize(node,tab._k2PreservedSize||node._k2UserSize||node.size,2400);store.set("mode",mode);syncSockets(node,store);renderMode();restoreNodeSize(node,exact);};tabButtons[mode]=tab;tabs.append(tab);});
+  const modeCopy={t2i:["Text to Film (T2I)","Create a new cinematic frame"],i2i:["Transform Frame (I2I)","Restyle or preserve a reference"],references:["Reference Studio","Combine up to four references"],control:["Directed Control","Guide structure with a control map"]};
+  ["t2i","i2i","references","control"].forEach(mode=>{const tab=button("","k2-tab");tab.append(el("strong","",modeCopy[mode][0]),el("small","",modeCopy[mode][1]));tab.addEventListener("pointerdown",()=>{const source=node._k2UserSize||node._k2StableSize||node.size;tab._k2PreservedSize=Array.isArray(source)?[source[0],source[1]]:null;},{capture:true});tab.onclick=()=>{const exact=preserveNodeSize(node,tab._k2PreservedSize||node._k2UserSize||node.size,2400);store.set("mode",mode);syncSockets(node,store);renderMode();restoreNodeSize(node,exact);};tabButtons[mode]=tab;tabs.append(tab);});
 
   const content=el("div","k2-content"), controls=el("section","k2-controls"), preview=el("section","k2-preview");
   const size=el("section","k2-block k2-film-size"), sizeHead=el("div","k2-block-head"); sizeHead.append(el("span","k2-section-index","01"),el("strong","","Film frame"));
@@ -222,7 +239,22 @@ export function buildNodeUI(node, configWidget) {
     tabButtons.control.disabled=models.capabilities.control===false;
     modePanel.replaceChildren();
     const mode=store.get("mode");
-    if(mode==="i2i"){
+    if(mode==="references"){
+      const note=el("p","k2-note","Krea2 reads the uploads as ordered Qwen3-VL vision tokens. In the prompt, refer to them as Image 1, Image 2, Image 3, and Image 4.");
+      const referenceGrid=el("div","k2-reference-grid");
+      [1,2,3,4].forEach(index=>referenceGrid.append(uploadZone(`IMAGE ${index}`,store,index===1?"uploads.image":`uploads.image_${index}`,showError)));
+      const referenceControls=el("div","k2-inline-grid");
+      referenceControls.append(
+        field("Vision detail (MP)",number(store.get("multi_reference.vision_megapixels")??.3,.1,8,.1,value=>store.set("multi_reference.vision_megapixels",value)),"Per-reference vision cap; 0.3 MP is the balanced default."),
+        field("Vision placement",select(["before prompt","after prompt"],store.get("multi_reference.vision_position")||"before prompt",value=>store.set("multi_reference.vision_position",value))),
+      );
+      const examples=el("div","k2-reference-examples");
+      examples.append(el("strong","k2-reference-examples-title","TRY A MULTI-REFERENCE PROMPT"));
+      const exampleGrid=el("div","k2-reference-example-grid");
+      MULTI_REFERENCE_EXAMPLES.forEach(([label,value])=>{const example=button(label,"k2-reference-example");example.title=value;example.onclick=()=>{store.set("prompt",value);prompt.value=value;};exampleGrid.append(example);});
+      examples.append(exampleGrid);
+      modePanel.append(note,referenceGrid,referenceControls,examples);
+    }else if(mode==="i2i"){
       if(store.get("i2i.pipeline")==="identity_edit"&&models.capabilities.identity_edit===false){modePanel.append(el("p","k2-error","KREA Identity Edit is unavailable because the installed krea2edit nodes were not registered. Choose Latent I2I or restart after installing the extension."));return;}
       const choices=[{label:"Latent I2I",value:"latent"}]; if(models.capabilities.identity_edit)choices.push({label:"KREA Identity Edit",value:"identity_edit"});
       const pipeline=select(choices,store.get("i2i.pipeline") || "latent",value=>{store.set("i2i.pipeline",value);syncSockets(node,store);renderMode();});
@@ -299,10 +331,12 @@ export function buildNodeUI(node, configWidget) {
   advanced.ontoggle=()=>store.set("advanced",advanced.open);
   const previewToolbar=el("div","k2-preview-toolbar"), previewTitle=el("strong","","FINAL FILM FRAME");
   const scrollZoom=toggle("Wheel zoom",store.get("scroll_zoom"),value=>store.set("scroll_zoom",value));scrollZoom.classList.add("k2-scroll-zoom");scrollZoom.title="Enable scroll-wheel zoom over the rendered image";
+  const compareToggle=toggle("Compare",store.get("compare_enabled"),value=>{store.set("compare_enabled",value);renderCompare();});compareToggle.classList.add("k2-scroll-zoom","k2-compare-toggle");compareToggle.title="Compare the generated frame with the first uploaded reference";
   const fit=button("Fit","k2-btn k2-btn-quiet"), one=button("1:1","k2-btn k2-btn-quiet"), zoomOut=button("−","k2-btn k2-btn-icon"),zoomIn=button("+","k2-btn k2-btn-icon"),copyImage=button("Copy","k2-btn k2-btn-quiet"),saveImage=button("Save","k2-btn k2-btn-quiet"),previewFull=button("⛶","k2-btn k2-btn-icon");
-  previewToolbar.append(previewTitle,scrollZoom,fit,one,zoomOut,zoomIn,copyImage,saveImage,previewFull);
+  previewToolbar.append(previewTitle,scrollZoom,compareToggle,fit,one,zoomOut,zoomIn,copyImage,saveImage,previewFull);
   const viewport=el("div","k2-viewport"), placeholder=el("div","k2-placeholder");placeholder.append(el("span","","K2"),el("strong","","Your film frame will appear here"),el("small","","Rendered locally in ComfyUI · IMAGE output remains connected"));
-  const outputImage=el("img","k2-output-image");outputImage.hidden=true;viewport.append(placeholder,outputImage);
+  const imageStage=el("div","k2-image-stage"),outputImage=el("img","k2-output-image"),compareLayer=el("div","k2-compare-layer"),compareImage=el("img","k2-compare-image"),compareDivider=el("button","k2-compare-divider");
+  outputImage.hidden=true;imageStage.hidden=true;compareImage.alt="First uploaded reference";compareLayer.append(compareImage,el("span","k2-compare-label","REFERENCE"));compareDivider.type="button";compareDivider.title="Drag to compare reference and generated frame";compareDivider.setAttribute("aria-label","Drag before and after comparison");compareDivider.append(el("span","","↔"));imageStage.append(outputImage,compareLayer,compareDivider);viewport.append(placeholder,imageStage);
   const previewFoot=el("div","k2-preview-foot"), seedText=el("span","","Seed: —"), autosave=toggle("Auto-save",store.get("auto_save"),v=>store.set("auto_save",v));previewFoot.append(seedText,autosave);
   preview.append(previewToolbar,viewport,previewFoot);content.append(controls,preview);
 
@@ -317,6 +351,7 @@ export function buildNodeUI(node, configWidget) {
     loraChips.hidden=!loraChips.childElementCount;
   }
   const prompt=el("textarea","k2-prompt");prompt.value=store.get("prompt") || "";prompt.placeholder="Describe the scene, subject, lens, lighting, color grade, and mood…";prompt.oninput=()=>store.set("prompt",prompt.value);prompt.addEventListener("wheel",event=>event.stopPropagation(),{passive:true});prompt.addEventListener("pointerdown",event=>event.stopPropagation());promptBlock.append(promptHead,loraChips,prompt);renderLoraChips();
+  const statsBar=el("section","k2-stats-bar"),statsGenerated=el("span","k2-stat"),statsTime=el("span","k2-stat"),statsAverage=el("span","k2-stat"),statsFrame=el("span","k2-stat");statsBar.append(statsGenerated,statsTime,statsAverage,statsFrame);
   const studioDeck=el("div","k2-studio-deck");studioDeck.append(size,parameters,stylesBlock,modePanel,advanced);
   controls.append(tabs,studioDeck,runRow,errorBox);
   const resizeGrip=el("button","k2-resize-grip");resizeGrip.type="button";resizeGrip.title="Drag to resize Krea 2 Film Studio";resizeGrip.setAttribute("aria-label","Resize Krea 2 Film Studio");
@@ -341,10 +376,13 @@ export function buildNodeUI(node, configWidget) {
     window.addEventListener("mousemove",move,true);window.addEventListener("mouseup",finish,true);window.addEventListener("blur",finish,true);
   };
   resizeGrip.ondragstart=event=>event.preventDefault();
-  root.append(header,content,promptBlock,resizeGrip);
+  root.append(header,content,promptBlock,statsBar,resizeGrip);
 
-  function resetRunState(){generate.disabled=false;generate.textContent="RENDER FILM FRAME";stop.hidden=true;}
-  function showError(error){errorBox.textContent=error?.message || String(error);errorBox.hidden=false;resetRunState();}
+  function formatDuration(milliseconds){const seconds=Math.max(0,Number(milliseconds)||0)/1000;return seconds<60?`${seconds.toFixed(seconds<10?1:0)}s`:`${Math.floor(seconds/60)}m ${Math.round(seconds%60)}s`;}
+  function renderStats(activeMs=null){const stats=store.get("stats")||{};const renders=Number(stats.renders_completed)||0;statsGenerated.textContent=`Images generated · ${Number(stats.images_generated)||0}`;statsTime.textContent=activeMs===null?`Last prompt · ${stats.last_render_ms?formatDuration(stats.last_render_ms):"—"}`:`Rendering · ${formatDuration(activeMs)}`;statsAverage.textContent=`Average · ${renders?formatDuration((Number(stats.total_render_ms)||0)/renders):"—"}`;statsFrame.textContent=`Frame · ${store.get("width")} × ${store.get("height")}`;}
+  function stopRenderClock(){if(renderClock!==null){window.clearInterval(renderClock);renderClock=null;}}
+  function resetRunState(){stopRenderClock();generate.disabled=false;generate.textContent="RENDER FILM FRAME";stop.hidden=true;renderStats();}
+  function showError(error){renderStartedAt=null;errorBox.textContent=error?.message || String(error);errorBox.hidden=false;resetRunState();}
   function clearError(){errorBox.hidden=true;errorBox.textContent="";}
   async function refreshModels(force=false){
     const data=await kreaApi.models(force);Object.assign(models,data);
@@ -381,11 +419,15 @@ export function buildNodeUI(node, configWidget) {
   helpButton.onclick=()=>{const view=modal("KREA 2 FILM STUDIO HELP");view.body.innerHTML="<p>Choose the KREA 2 model, text encoder, and image VAE in Settings. Text to Film creates a new frame; Transform Frame preserves or restyles a reference; Directed Control follows a structural guide.</p><p>Describe the subject, lens, lighting, color grade, and mood in Scene Prompt. Press Ctrl/Cmd + Enter to render. IMAGE and LATENT remain available through the normal ComfyUI outputs.</p>";document.body.append(view.overlay);};
   fullButton.onclick=()=>root.requestFullscreen?.();previewFull.onclick=()=>viewport.requestFullscreen?.();
   expandPrompt.onclick=()=>{promptBlock.classList.toggle("is-expanded");expandPrompt.textContent=promptBlock.classList.contains("is-expanded")?"Collapse":"Expand";};
-  const applyPreviewZoom=next=>{zoom=Math.max(.25,Math.min(6,next));outputImage.style.transform=`scale(${zoom})`;outputImage.dataset.zoom=zoom.toFixed(3);viewport.classList.toggle("is-zoomed",Math.abs(zoom-1)>.001);};
-  fit.onclick=()=>{zoom=1;applyPreviewZoom(1);outputImage.classList.remove("is-native");viewport.scrollTo(0,0);};
-  one.onclick=()=>{zoom=1;applyPreviewZoom(1);outputImage.classList.add("is-native");viewport.scrollTo(0,0);};
+  function firstComparableReference(){if(store.get("mode")==="t2i")return null;for(const key of ["image","image_2","image_3","image_4"]){const value=inputImageDescriptor(store.get(`uploads.${key}`));if(value)return value;}return null;}
+  function setComparePosition(value){comparePosition=Math.max(2,Math.min(98,Number(value)||50));compareLayer.style.clipPath=`inset(0 ${100-comparePosition}% 0 0)`;compareDivider.style.left=`${comparePosition}%`;compareDivider.setAttribute("aria-valuenow",String(Math.round(comparePosition)));}
+  function renderCompare(){const reference=firstComparableReference(),input=compareToggle.querySelector("input"),available=!!reference&&!imageStage.hidden&&!outputImage.hidden;input.disabled=!available;compareToggle.classList.toggle("is-disabled",!available);const active=available&&store.get("compare_enabled")===true;compareLayer.hidden=!active;compareDivider.hidden=!active;if(reference){const source=kreaApi.viewUrl(reference);if(compareImage.dataset.source!==source){compareImage.dataset.source=source;compareImage.src=`${source}&t=${Date.now()}`;}}setComparePosition(comparePosition);}
+  const applyPreviewZoom=next=>{zoom=Math.max(.25,Math.min(6,next));imageStage.style.transform=`scale(${zoom})`;imageStage.dataset.zoom=zoom.toFixed(3);outputImage.dataset.zoom=zoom.toFixed(3);viewport.classList.toggle("is-zoomed",Math.abs(zoom-1)>.001);};
+  fit.onclick=()=>{zoom=1;applyPreviewZoom(1);imageStage.classList.remove("is-native");outputImage.classList.remove("is-native");viewport.scrollTo(0,0);};
+  one.onclick=()=>{zoom=1;applyPreviewZoom(1);imageStage.classList.add("is-native");outputImage.classList.add("is-native");viewport.scrollTo(0,0);};
   zoomIn.onclick=()=>applyPreviewZoom(zoom+.25);zoomOut.onclick=()=>applyPreviewZoom(zoom-.25);
-  viewport.addEventListener("wheel",event=>{if(!store.get("scroll_zoom")||outputImage.hidden)return;event.preventDefault();event.stopImmediatePropagation();applyPreviewZoom(zoom*Math.exp(-event.deltaY*.0015));},{passive:false,capture:true});
+  viewport.addEventListener("wheel",event=>{if(!store.get("scroll_zoom")||imageStage.hidden)return;event.preventDefault();event.stopImmediatePropagation();applyPreviewZoom(zoom*Math.exp(-event.deltaY*.0015));},{passive:false,capture:true});
+  compareDivider.onpointerdown=event=>{event.preventDefault();event.stopPropagation();compareDivider.setPointerCapture(event.pointerId);const move=moveEvent=>{const rect=imageStage.getBoundingClientRect();setComparePosition((moveEvent.clientX-rect.left)/Math.max(1,rect.width)*100);};move(event);compareDivider.onpointermove=move;compareDivider.onpointerup=compareDivider.onpointercancel=()=>{compareDivider.onpointermove=null;};};
   copyImage.onclick=async()=>{if(!currentImage)return;try{const blob=await fetch(kreaApi.viewUrl(currentImage)).then(r=>r.blob());await navigator.clipboard.write([new ClipboardItem({[blob.type]:blob})]);}catch(error){showError(error);}};
   saveImage.onclick=async()=>{if(!currentImage)return;if(store.get("auto_save")&&store.get("save_path"))return;if(currentImage.type!=="temp")return kreaApi.openFolder(currentImage).catch(showError);try{const saved=await kreaApi.saveTemp(currentImage,currentMetadata||{});currentImage=saved;saveImage.textContent="Saved";sessionItems.unshift({...saved,metadata:currentMetadata});}catch(error){showError(error);}};
 
@@ -402,11 +444,12 @@ export function buildNodeUI(node, configWidget) {
     if(!externalClip&&!store.get("gguf.clip_enabled")&&!store.get("clip"))return showError(new Error("Select a KREA text encoder in Settings or connect CLIP."));
     if(!store.get("vae")&&!(ext.vae&&hasConnectedInput(node,"vae")))return showError(new Error("Select a KREA VAE in Settings or connect VAE."));
     if(store.get("mode")!=="t2i"&&!store.get("uploads.image")&&!hasConnectedInput(node,"image"))return showError(new Error("Upload an image or connect the IMAGE input."));
+    if(store.get("mode")==="references"&&![["image","uploads.image"],["image_2","uploads.image_2"],["image_3","uploads.image_3"],["image_4","uploads.image_4"]].some(([socket,path])=>hasConnectedInput(node,socket)||store.get(path)))return showError(new Error("Reference Studio needs at least one uploaded or connected reference image."));
     if(store.get("mode")==="control"&&models.capabilities.control===false)return showError(new Error("KREA2 Control is unavailable because its installed nodes were not registered."));
     if(store.get("mode")==="i2i"&&store.get("i2i.pipeline")==="identity_edit"&&models.capabilities.identity_edit===false)return showError(new Error("KREA Identity Edit is unavailable because its installed nodes were not registered."));
     if(store.get("mode")==="i2i"&&store.get("i2i.pipeline")==="identity_edit"&&!store.get("i2i.identity_lora"))return showError(new Error("KREA Identity Edit v1.2 LoRA is missing. Reopen the node to install it, or rescan models in Settings."));
     if(store.get("mode")==="control"&&!store.get("control.lora"))return showError(new Error("Select the KREA Control LoRA."));
-    rememberPrompt(store.get("prompt")||"");generate.disabled=true;generate.textContent="QUEUED…";stop.hidden=false;usedSeed=null;
+    rememberPrompt(store.get("prompt")||"");generate.disabled=true;generate.textContent="QUEUED…";stop.hidden=false;usedSeed=null;renderStartedAt=performance.now();stopRenderClock();renderClock=window.setInterval(()=>renderStats(performance.now()-renderStartedAt),250);renderStats(0);
     try{await app.queuePrompt(0,1);generate.textContent="GENERATING…";}catch(error){showError(error);}
   };
   prompt.onkeydown=event=>{if((event.ctrlKey||event.metaKey)&&event.key==="Enter"){event.preventDefault();generate.click();}};
@@ -418,7 +461,8 @@ export function buildNodeUI(node, configWidget) {
     if(message?.used_seed?.length){usedSeed=Number(message.used_seed[0]);seedText.textContent=`Seed: ${usedSeed}`;if(store.get("randomize_seed")){store.set("seed",usedSeed);seed.value=usedSeed;}}
     const images=message?.images || [];
     if(!images.length)return;
-    resetRunState();placeholder.hidden=true;outputImage.hidden=false;viewport.classList.add("has-output");
+    if(renderStartedAt!==null){const elapsed=Math.max(0,performance.now()-renderStartedAt),previous=store.get("stats")||{};store.set("stats",{images_generated:(Number(previous.images_generated)||0)+images.length,renders_completed:(Number(previous.renders_completed)||0)+1,total_render_ms:(Number(previous.total_render_ms)||0)+elapsed,last_render_ms:elapsed,last_batch:images.length,last_completed_at:new Date().toISOString()});renderStartedAt=null;}
+    resetRunState();placeholder.hidden=true;imageStage.hidden=false;outputImage.hidden=false;viewport.classList.add("has-output");
     const baseMetadata=metadataSnapshot(store.get(),usedSeed);
     const entries=images.map((item,index)=>{
       const image={filename:item.filename,subfolder:item.subfolder||"",type:item.type|| (store.get("auto_save")?"output":"temp")};
@@ -429,12 +473,13 @@ export function buildNodeUI(node, configWidget) {
     sessionItems.unshift(...entries);
     const first=entries[0];currentImage={filename:first.filename,subfolder:first.subfolder,type:first.type};
     currentMetadata=first.metadata;outputImage.src=`${kreaApi.viewUrl(currentImage)}&t=${Date.now()}`;
+    renderCompare();
     const customSaved=!!(store.get("auto_save")&&store.get("save_path"));saveImage.textContent=customSaved?"Saved":currentImage.type==="temp"?"Save":"Open";saveImage.disabled=customSaved;saveImage.title=customSaved?`Saved automatically to ${store.get("save_path")}`:"";
     if(store.get("notification_sound"))playComplete();
   };
 
   let panning=false,panX=0,panY=0,panLeft=0,panTop=0;
-  viewport.onpointerdown=event=>{if(outputImage.hidden||event.button!==0)return;panning=true;panX=event.clientX;panY=event.clientY;panLeft=viewport.scrollLeft;panTop=viewport.scrollTop;viewport.setPointerCapture(event.pointerId);viewport.classList.add("is-panning");};
+  viewport.onpointerdown=event=>{if(imageStage.hidden||event.button!==0||event.target.closest?.(".k2-compare-divider"))return;panning=true;panX=event.clientX;panY=event.clientY;panLeft=viewport.scrollLeft;panTop=viewport.scrollTop;viewport.setPointerCapture(event.pointerId);viewport.classList.add("is-panning");};
   viewport.onpointermove=event=>{if(!panning)return;viewport.scrollLeft=panLeft-(event.clientX-panX);viewport.scrollTop=panTop-(event.clientY-panY);};
   viewport.onpointerup=viewport.onpointercancel=()=>{panning=false;viewport.classList.remove("is-panning");};
 
@@ -447,8 +492,8 @@ export function buildNodeUI(node, configWidget) {
     steps.value=store.get("steps");cfg.value=store.get("cfg");seed.value=store.get("seed");random.querySelector("input").checked=!!store.get("randomize_seed");
     sampler.value=store.get("sampler");scheduler.value=store.get("scheduler");presetSelect.value=store.get("preset")||"Custom";batch.value=String(store.get("batch_size")||1);
     denoiseControl.value=store.get("denoise");refinementToggle.querySelector("input").checked=!!store.get("refinement.enabled");refineSteps.value=store.get("refinement.steps");refineCfg.value=store.get("refinement.cfg");refineDenoise.value=store.get("refinement.denoise");
-    refineSampler.value=store.get("refinement.sampler");refineScheduler.value=store.get("refinement.scheduler");advanced.open=!!store.get("advanced");autosave.querySelector("input").checked=!!store.get("auto_save");scrollZoom.querySelector("input").checked=!!store.get("scroll_zoom");root.dataset.theme=store.get("theme")||"blue-snow";applyCanvasNodeTheme(node,root.dataset.theme);
-    renderLoraChips();renderSamplingBackend();syncSockets(node,store);renderMode();
+    refineSampler.value=store.get("refinement.sampler");refineScheduler.value=store.get("refinement.scheduler");advanced.open=!!store.get("advanced");autosave.querySelector("input").checked=!!store.get("auto_save");scrollZoom.querySelector("input").checked=!!store.get("scroll_zoom");compareToggle.querySelector("input").checked=!!store.get("compare_enabled");root.dataset.theme=store.get("theme")||"blue-snow";applyCanvasNodeTheme(node,root.dataset.theme);
+    renderLoraChips();renderSamplingBackend();syncSockets(node,store);renderMode();renderCompare();renderStats();
   }
   store.subscribe((path)=>{
     if(path==="*")syncControlsFromState();
@@ -456,6 +501,9 @@ export function buildNodeUI(node, configWidget) {
     if(path==="loras")renderLoraChips();
     if(path==="auto_save")autosave.querySelector("input").checked=!!store.get("auto_save");
     if(path==="scroll_zoom")scrollZoom.querySelector("input").checked=!!store.get("scroll_zoom");
+    if(path==="compare_enabled"){compareToggle.querySelector("input").checked=!!store.get("compare_enabled");renderCompare();}
+    if(path.startsWith?.("uploads."))renderCompare();
+    if(path==="stats"||path==="width"||path==="height")renderStats();
     if(path==="theme"){root.dataset.theme=store.get("theme")||"blue-snow";applyCanvasNodeTheme(node,root.dataset.theme);}
     if(path==="advanced"){advanced.open=!!store.get("advanced");renderMode();}
     if(path==="res4lyf.enabled")renderSamplingBackend();
@@ -463,6 +511,6 @@ export function buildNodeUI(node, configWidget) {
     if(path==="gguf.enabled"||path==="gguf.clip_enabled")renderMode();
   });
   async function bootstrapAssets(){let refresh=false;try{const assets=await kreaApi.ensureAssets();refresh=!!assets.changed;if(assets.restart_required)showError(new Error("KREA ControlNet nodes were installed. Restart ComfyUI once to activate Directed Control."));}catch(error){showError(new Error(`Managed asset check failed: ${error.message}`));}await refreshModels(refresh);}
-  renderMode();renderSamplingBackend();syncSockets(node,store);bootstrapAssets().catch(showError);
-  return {root,store,models,handleExecuted,showError,handleStopped:resetRunState,syncSockets:()=>syncSockets(node,store)};
+  renderMode();renderSamplingBackend();syncSockets(node,store);renderStats();renderCompare();bootstrapAssets().catch(showError);
+  return {root,store,models,handleExecuted,showError,handleStopped:()=>{renderStartedAt=null;resetRunState();},syncSockets:()=>syncSockets(node,store)};
 }

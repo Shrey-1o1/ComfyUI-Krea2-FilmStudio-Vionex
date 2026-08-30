@@ -161,10 +161,13 @@ def parse_config(raw: str, *, need_model: bool, need_clip: bool, need_vae: bool,
         if isinstance(i2i_migration, dict):
             i2i_migration["fit_mode"] = "fit"
             i2i_migration.setdefault("identity_lora", "")
+    if incoming_version < 4:
+        incoming = deepcopy(incoming)
+        incoming["version"] = 4
 
     data = _merge(DEFAULT_CONFIG, incoming)
     mode = str(data.get("mode", "t2i")).lower()
-    if mode not in {"t2i", "i2i", "control"}:
+    if mode not in {"t2i", "i2i", "control", "references"}:
         raise ValueError(f"Unsupported KREA 2 mode: {mode}")
     data["mode"] = mode
 
@@ -187,9 +190,10 @@ def parse_config(raw: str, *, need_model: bool, need_clip: bool, need_vae: bool,
     data["negative_prompt"] = str(data.get("negative_prompt", ""))
     data["custom_resolution"] = bool(data.get("custom_resolution", False))
     data["scroll_zoom"] = bool(data.get("scroll_zoom", False))
+    data["compare_enabled"] = bool(data.get("compare_enabled", False))
     data["theme"] = str(data.get("theme", "blue-snow"))
-    if data["theme"] not in {"red-fire", "blue-snow", "crimson", "glass"}:
-        raise ValueError("Studio theme must be Red Fire, Blue Snow, Crimson, or Glass.")
+    if data["theme"] not in {"red-fire", "blue-snow", "crimson", "glass", "black"}:
+        raise ValueError("Studio theme must be Red Fire, Blue Snow, Crimson, Glass, or Black.")
     data["save_path"] = str(data.get("save_path", "")).strip()
     if data["save_path"] and not Path(os.path.expandvars(data["save_path"])).expanduser().is_absolute():
         raise ValueError("Custom image save path must be an absolute folder path.")
@@ -264,6 +268,14 @@ def parse_config(raw: str, *, need_model: bool, need_clip: bool, need_vae: bool,
     i2i["ref_boost_a"] = _number(i2i.get("ref_boost_a", 1), "Identity reference A boost", 0, 1000)
     i2i["grounding_px"] = _integer(i2i.get("grounding_px", 768), "Identity grounding pixels", 64, 8192)
 
+    multi_reference = _mapping(data, "multi_reference")
+    multi_reference["vision_megapixels"] = _number(
+        multi_reference.get("vision_megapixels", 0.3), "Reference vision megapixels", 0.1, 8.0
+    )
+    if multi_reference.get("vision_position") not in {"before prompt", "after prompt"}:
+        raise ValueError("Reference vision position must be before prompt or after prompt.")
+    multi_reference["system_prompt"] = str(multi_reference.get("system_prompt", "")).strip()
+
     reference_mp = data.get("reference_downscale_mp", 1)
     if isinstance(reference_mp, str) and reference_mp.lower() == "original":
         data["reference_downscale_mp"] = "Original"
@@ -273,6 +285,15 @@ def parse_config(raw: str, *, need_model: bool, need_clip: bool, need_vae: bool,
     uploads = _mapping(data, "uploads")
     uploads["image"] = str(uploads.get("image", ""))
     uploads["image_2"] = str(uploads.get("image_2", ""))
+    uploads["image_3"] = str(uploads.get("image_3", ""))
+    uploads["image_4"] = str(uploads.get("image_4", ""))
+    stats = _mapping(data, "stats")
+    stats["images_generated"] = _integer(stats.get("images_generated", 0), "Generated image count", 0, 2**31 - 1)
+    stats["renders_completed"] = _integer(stats.get("renders_completed", 0), "Completed render count", 0, 2**31 - 1)
+    stats["total_render_ms"] = _number(stats.get("total_render_ms", 0), "Total render time", 0, 10**15)
+    stats["last_render_ms"] = _number(stats.get("last_render_ms", 0), "Last render time", 0, 10**12)
+    stats["last_batch"] = _integer(stats.get("last_batch", 0), "Last render batch", 0, 16)
+    stats["last_completed_at"] = str(stats.get("last_completed_at", ""))
     external = _mapping(data, "external")
     for key in ("model", "clip", "vae"):
         external[key] = bool(external.get(key, False))

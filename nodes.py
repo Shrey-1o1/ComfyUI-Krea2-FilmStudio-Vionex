@@ -7,6 +7,7 @@ import logging
 import math
 import os
 from pathlib import Path
+import re
 import secrets
 from typing import Any
 
@@ -21,6 +22,103 @@ from .settings import default_config
 
 
 LOGGER = logging.getLogger("Krea2FilmStudio")
+
+
+try:
+    from comfy.text_encoders.krea2 import KREA2_TEMPLATE
+except Exception:  # pragma: no cover - compatibility with older ComfyUI builds
+    KREA2_TEMPLATE = (
+        "<|im_start|>system\nDescribe the image by detailing the color, shape, size, texture, "
+        "quantity, text, spatial relationships of the objects and background:<|im_end|>\n"
+        "<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n"
+    )
+
+
+_KREA2_SYSTEM_MATCH = re.search(r"<\|im_start\|>system\n(.*?)<\|im_end\|>", KREA2_TEMPLATE, re.S)
+KREA2_SYSTEM_DEFAULT = _KREA2_SYSTEM_MATCH.group(1) if _KREA2_SYSTEM_MATCH else (
+    "Describe the image by detailing the color, shape, size, texture, quantity, text, "
+    "spatial relationships of the objects and background:"
+)
+
+
+class Krea2MultiReferenceEncode:
+    """Vision-aware Krea2 conditioning with four explicitly ordered references.
+
+    The vision-token assembly follows the MIT-licensed ComfyUI-Krea2TextEncoder
+    implementation by ethanfel: https://github.com/ethanfel/ComfyUI-Krea2TextEncoder
+    Film Studio keeps a fixed four-slot surface so prompt references remain stable.
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "clip": ("CLIP",),
+                "prompt": ("STRING", {"multiline": True, "dynamicPrompts": True}),
+                "system_prompt": ("STRING", {"multiline": True}),
+                "vision_megapixels": ("FLOAT", {"default": 0.3, "min": 0.1, "max": 8.0, "step": 0.1}),
+                "vision_position": (["before prompt", "after prompt"],),
+            },
+            "optional": {
+                "image1": ("IMAGE",),
+                "image2": ("IMAGE",),
+                "image3": ("IMAGE",),
+                "image4": ("IMAGE",),
+            },
+        }
+
+    RETURN_TYPES = ("CONDITIONING",)
+    FUNCTION = "encode"
+    CATEGORY = "KREA / Film Studio/internal"
+    DESCRIPTION = "Ordered multi-image vision conditioning for the Krea2 Qwen3-VL text encoder."
+
+    @staticmethod
+    def _prepare_vision(images: list[Any], vision_megapixels: float) -> tuple[list[torch.Tensor], str]:
+        prepared: list[torch.Tensor] = []
+        prompts: list[str] = []
+        total = int(float(vision_megapixels) * 1024 * 1024)
+        for order, item in enumerate(images, start=1):
+            slot, image = item if isinstance(item, tuple) else (order, item)
+            samples = image[..., :3].movedim(-1, 1)
+            scale = min(1.0, math.sqrt(total / (samples.shape[3] * samples.shape[2])))
+            width = max(1, round(samples.shape[3] * scale))
+            height = max(1, round(samples.shape[2] * scale))
+            resized = comfy.utils.common_upscale(samples, width, height, "area", "disabled")
+            prepared.append(resized.movedim(1, -1))
+            prompts.append(f"Image {slot} (Picture {slot}): <|vision_start|><|image_pad|><|vision_end|>")
+        return prepared, "\n".join(prompts) + "\n"
+
+    def encode(
+        self,
+        clip,
+        prompt: str,
+        system_prompt: str,
+        vision_megapixels: float = 0.3,
+        vision_position: str = "before prompt",
+        **kwargs: Any,
+    ):
+        images = [(index, kwargs.get(f"image{index}")) for index in range(1, 5) if kwargs.get(f"image{index}") is not None]
+        if not images:
+            raise ValueError("Reference Studio needs at least one reference image.")
+        images_vl, image_prompt = self._prepare_vision(images, vision_megapixels)
+        system = str(system_prompt or "").strip() or KREA2_SYSTEM_DEFAULT
+        template = (
+            "<|im_start|>system\n" + system + "<|im_end|>\n"
+            "<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n"
+        )
+        prompt = str(prompt or "").strip()
+        text = f"{prompt}\n{image_prompt}" if vision_position == "after prompt" else f"{image_prompt}{prompt}"
+        tokens = clip.tokenize(text, images=images_vl, llama_template=template)
+        try:
+            return (clip.encode_from_tokens_scheduled(tokens),)
+        except NotImplementedError as exc:
+            if "Float8" in str(exc):
+                raise RuntimeError(
+                    "Krea2 multi-reference vision encoding cannot use this FP8 text encoder. "
+                    "Select a BF16/FP16 Qwen3-VL-4B Krea2 text encoder (standard or compatible GGUF) "
+                    "and render again."
+                ) from exc
+            raise
 
 
 class Krea2ReferenceDownscale:
@@ -209,6 +307,8 @@ class Krea2OneNode:
                 "prompt": ("STRING", {"forceInput": True, "rawLink": True}),
                 "image": ("IMAGE", {"rawLink": True}),
                 "image_2": ("IMAGE", {"rawLink": True}),
+                "image_3": ("IMAGE", {"rawLink": True}),
+                "image_4": ("IMAGE", {"rawLink": True}),
                 "model": ("MODEL", {"rawLink": True}),
                 "clip": ("CLIP", {"rawLink": True}),
                 "vae": ("VAE", {"rawLink": True}),
@@ -258,6 +358,8 @@ class Krea2OneNode:
             "prompt": raw_inputs.get("prompt"),
             "image": raw_inputs.get("image"),
             "image_2": raw_inputs.get("image_2"),
+            "image_3": raw_inputs.get("image_3"),
+            "image_4": raw_inputs.get("image_4"),
             "model": raw_inputs.get("model") if external.get("model") else None,
             "clip": raw_inputs.get("clip") if external.get("clip") else None,
             "vae": raw_inputs.get("vae") if external.get("vae") else None,
@@ -282,6 +384,7 @@ class Krea2OneNode:
 NODE_CLASS_MAPPINGS = {
     "Krea2OneNode": Krea2OneNode,
     "Krea2ReferenceDownscale": Krea2ReferenceDownscale,
+    "Krea2MultiReferenceEncode": Krea2MultiReferenceEncode,
     "Krea2ImageFit": Krea2ImageFit,
     "Krea2PromptTemplate": Krea2PromptTemplate,
     "Krea2PromptStyle": Krea2PromptStyle,
@@ -292,6 +395,7 @@ NODE_CLASS_MAPPINGS = {
 NODE_DISPLAY_NAME_MAPPINGS = {
     "Krea2OneNode": "Krea 2 Film Studio",
     "Krea2ReferenceDownscale": "KREA 2 Reference Downscale (internal)",
+    "Krea2MultiReferenceEncode": "KREA 2 Multi-Reference Encode (internal)",
     "Krea2ImageFit": "KREA 2 Image Fit (internal)",
     "Krea2PromptTemplate": "KREA 2 Prompt Template (internal)",
     "Krea2PromptStyle": "KREA 2 Cinematic Style (internal)",

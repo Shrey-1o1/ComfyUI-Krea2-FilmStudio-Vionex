@@ -47,7 +47,7 @@ PRESETS: dict[str, dict[str, Any]] = {
 
 
 DEFAULT_CONFIG: dict[str, Any] = {
-    "version": 3,
+    "version": 4,
     "mode": "t2i",
     "preset": "Fast",
     "prompt": "",
@@ -85,6 +85,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "auto_save": True,
     "save_path": "",
     "scroll_zoom": False,
+    "compare_enabled": False,
     "theme": "blue-snow",
     "prompt_crafter_url": "https://chatgpt.com/g/g-6a7ea7070fd0819196ae9307a5e70529-vionex-prompt-crafter",
     "notification_sound": False,
@@ -128,6 +129,15 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "ref_boost_a": 1.0,
         "grounding_px": 768,
     },
+    "multi_reference": {
+        "vision_megapixels": 0.3,
+        "vision_position": "before prompt",
+        "system_prompt": (
+            "Study every numbered reference image, preserve the requested identity, object, wardrobe, "
+            "style, lighting, and environment cues, then combine them into one coherent new shot that "
+            "follows the user's spatial instructions. Treat Image N and Picture N as the same reference."
+        ),
+    },
     "control": {
         "lora": "",
         "strength": 1.0,
@@ -141,7 +151,15 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "preprocessor_resolution": 1024,
     },
     "external": {"model": False, "clip": False, "vae": False},
-    "uploads": {"image": "", "image_2": ""},
+    "uploads": {"image": "", "image_2": "", "image_3": "", "image_4": ""},
+    "stats": {
+        "images_generated": 0,
+        "renders_completed": 0,
+        "total_render_ms": 0.0,
+        "last_render_ms": 0.0,
+        "last_batch": 0,
+        "last_completed_at": "",
+    },
 }
 
 

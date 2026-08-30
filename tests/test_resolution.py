@@ -7,6 +7,9 @@ from Krea2OneNode.resolution import resolution_for_megapixels, validate_dimensio
 
 
 class ResolutionTests(unittest.TestCase):
+    def test_two_megapixel_widescreen_uses_film_studio_bucket(self):
+        self.assertEqual(resolution_for_megapixels("16:9", 2.0, 8), (1928, 1088))
+
     def test_megapixel_resolution_is_aligned_and_close(self) -> None:
         for aspect, megapixels in (("1:1", 1.0), ("16:9", 0.98), ("9:16", 1.0), ("21:9", 1.5)):
             with self.subTest(aspect=aspect, megapixels=megapixels):

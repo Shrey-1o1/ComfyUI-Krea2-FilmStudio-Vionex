@@ -48,7 +48,7 @@ def main() -> None:
     config.update(
         model=choose("diffusion_models", lambda name: "krea2" in name),
         clip=choose("text_encoders", lambda name: "qwen3vl_4b" in name),
-        vae=choose("vae", lambda name: "qwen_image_vae" in name),
+        vae=choose("vae", lambda name: "wan_2.1_vae" in name),
         randomize_seed=False,
         seed=20260812,
     )
