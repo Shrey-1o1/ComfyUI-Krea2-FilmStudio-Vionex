@@ -1,15 +1,31 @@
-import {button, el, field, modal, number, section, select, textInput, toggle} from "./components.js?v=film-studio-28";
+import {button, el, field, modal, number, section, select, textInput, toggle} from "./components.js?v=film-studio-29";
+
+function normalizedLoraName(name) {
+  return String(name || "").replaceAll("\\", "/").toLowerCase();
+}
+
+function rememberDismissedRecommendedLora(store, item) {
+  if (!item?.managed || !item.name) return;
+  const dismissed = [...(store.get("dismissed_managed_loras") || [])];
+  if (!dismissed.some(name => normalizedLoraName(name) === normalizedLoraName(item.name))) {
+    store.set("dismissed_managed_loras", [...dismissed, item.name]);
+  }
+}
 
 function loraRow(store, item, index, models, render) {
   const row = el("div", "k2-lora-row");
   const choose = select(["", ...(models.loras || [])], item.name || "", value => {
     const list = [...(store.get("loras") || [])];
-    const wasManaged=!!list[index]?.managed;
-    list[index] = {...list[index], name:value, ...(wasManaged?{managed:false,enabled:true}:{})};
+    const previous = list[index];
+    const wasManaged = !!previous?.managed;
+    if (wasManaged && normalizedLoraName(previous.name) !== normalizedLoraName(value)) {
+      rememberDismissedRecommendedLora(store, previous);
+    }
+    list[index] = {...previous, name:value, ...(wasManaged?{managed:false}:{})};
     store.set("loras", list);
     if(wasManaged)render();
   });
-  choose.title = item.managed ? "Choose a different LoRA; the managed Film LoRA will be restored on the next library scan." : "Choose any LoRA found by ComfyUI.";
+  choose.title = item.managed ? "Recommended by Film Studio. You may select a different LoRA." : "Choose any LoRA found by ComfyUI.";
   const modelStrength = number(item.strength_model ?? 1, -10, 10, .05, value => {
     const list = [...store.get("loras")]; list[index] = {...list[index], strength_model:value}; store.set("loras", list);
   });
@@ -18,14 +34,16 @@ function loraRow(store, item, index, models, render) {
   });
   const enabled = toggle("On", item.enabled !== false, value => {
     const list = [...store.get("loras")]; list[index] = {...list[index], enabled:value}; store.set("loras", list);
+    if (item.managed) render();
   });
   const remove = button("×", "k2-btn k2-btn-danger");
-  remove.onclick = () => { const list = [...store.get("loras")]; list.splice(index, 1); store.set("loras", list); render(); };
+  remove.onclick = () => {
+    rememberDismissedRecommendedLora(store, item);
+    const list = [...store.get("loras")]; list.splice(index, 1); store.set("loras", list); render();
+  };
   if (item.managed) {
-    enabled.querySelector("input").disabled = true;
-    enabled.querySelector(".k2-toggle-label").textContent = "Managed · On";
-    remove.disabled = true;
-    remove.title = "Required Film Studio LoRA";
+    enabled.querySelector(".k2-toggle-label").textContent = `Recommended · ${item.enabled !== false ? "On" : "Off"}`;
+    remove.title = "Remove this recommended LoRA";
   }
   row.append(choose, field("Model", modelStrength), field("CLIP", clipStrength), enabled, remove);
   return row;
@@ -68,8 +86,8 @@ export function openSettings({store, models, refreshModels, syncSockets, showErr
     };
     const managedNames=models.suggested?.managed_loras||[];
     assetList.append(
-      assetRow("Canon UltraReal", "Managed LoRA · always enabled", "https://civitai.red/models/2783143/canon-ultrareal", managedNames.some(name=>/canon_krea2\.safetensors$/i.test(name))),
-      assetRow("Cinematic Movie Still", "Managed LoRA · always enabled", "https://civitai.red/models/2840790/cinematic-movie-still", managedNames.some(name=>/cinematic_movie_still_krea2\.safetensors$/i.test(name))),
+      assetRow("Canon UltraReal", "Recommended LoRA · enabled by default", "https://civitai.red/models/2783143/canon-ultrareal", managedNames.some(name=>/canon_krea2\.safetensors$/i.test(name))),
+      assetRow("Cinematic Movie Still", "Recommended LoRA · enabled by default", "https://civitai.red/models/2840790/cinematic-movie-still", managedNames.some(name=>/cinematic_movie_still_krea2\.safetensors$/i.test(name))),
       assetRow("KREA Identity Edit v1.2", "Loaded automatically for Identity Edit", "https://huggingface.co/conradlocke/krea2-identity-edit/blob/main/krea2_identity_edit_v1_2.safetensors", !!models.suggested?.identity_lora),
       assetRow("KREA Depth Control", "Required depth LoRA", "https://huggingface.co/Patil/Krea-2-depth-controlnet/tree/main", !!models.suggested?.control_lora),
       assetRow("KREA ControlNet nodes", "Native control workflow", "https://github.com/facok/comfyui-krea2-controlnet", models.capabilities?.control!==false),

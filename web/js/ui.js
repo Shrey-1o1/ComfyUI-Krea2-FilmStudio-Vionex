@@ -1,13 +1,13 @@
 import { app } from "../../../scripts/app.js";
 import { api } from "../../../scripts/api.js";
 import { kreaApi } from "./api.js";
-import { button, el, field, modal, number, select, setOptions, stepper, toggle } from "./components.js?v=film-studio-28";
+import { button, el, field, modal, number, select, setOptions, stepper, toggle } from "./components.js?v=film-studio-29";
 import { openGallery } from "./gallery.js";
 import { openLoraBrowser } from "./lora_browser.js?v=film-studio-18";
 import { openPromptHistory, rememberPrompt } from "./prompt_history.js";
 import { openPromptStructure } from "./prompt_structure.js?v=film-studio-9";
-import { openSettings } from "./settings.js?v=film-studio-28";
-import { dimensionsFor, FILM_FORMATS, metadataSnapshot, parseState, RESOLUTION_PRESETS, StateStore } from "./state.js?v=film-studio-28";
+import { openSettings } from "./settings.js?v=film-studio-29";
+import { dimensionsFor, FILM_FORMATS, metadataSnapshot, parseState, RESOLUTION_PRESETS, StateStore } from "./state.js?v=film-studio-29";
 
 const MIN_NODE_WIDTH = 900;
 const MIN_UI_HEIGHT = 420;
@@ -48,6 +48,14 @@ function hasConnectedInput(node, name) {
 
 function normalizedModelName(name) {
   return String(name || "").replaceAll("\\", "/").replace(/^\.\//, "").toLowerCase();
+}
+
+function rememberDismissedRecommendedLora(store, item) {
+  if (!item?.managed || !item.name) return;
+  const dismissed = [...(store.get("dismissed_managed_loras") || [])];
+  if (!dismissed.some(name => normalizedModelName(name) === normalizedModelName(item.name))) {
+    store.set("dismissed_managed_loras", [...dismissed, item.name]);
+  }
 }
 
 function resolveModelName(name, available) {
@@ -345,8 +353,9 @@ export function buildNodeUI(node, configWidget) {
   const loraChips=el("div","k2-lora-chips");
   function renderLoraChips(){
     loraChips.replaceChildren(...(store.get("loras")||[]).filter(item=>item.enabled!==false&&item.name).map(item=>{
-      const chip=button(`${item.name.split(/[\\/]/).at(-1).replace(/\.safetensors$/i,"")} ${Number(item.strength_model??1).toFixed(2)}${item.managed?" · ON":" ×"}`,`k2-lora-chip${item.managed?" is-managed":""}`);
-      chip.title=item.managed?"Managed Film Studio LoRA — always enabled":"Remove this LoRA";chip.disabled=!!item.managed;if(!item.managed)chip.onclick=()=>store.set("loras",(store.get("loras")||[]).filter(row=>row!==item));return chip;
+      const chip=button(`${item.name.split(/[\\/]/).at(-1).replace(/\.safetensors$/i,"")} ${Number(item.strength_model??1).toFixed(2)} ×`,`k2-lora-chip${item.managed?" is-managed":""}`);
+      chip.title=item.managed?"Recommended Film Studio LoRA — click to remove":"Remove this LoRA";
+      chip.onclick=()=>{rememberDismissedRecommendedLora(store,item);store.set("loras",(store.get("loras")||[]).filter(row=>row!==item));};return chip;
     }));
     loraChips.hidden=!loraChips.childElementCount;
   }
@@ -404,7 +413,21 @@ export function buildNodeUI(node, configWidget) {
     const resolvedLoras=(store.get("loras")||[]).map(item=>({...item,name:resolveModelName(item.name,data.loras)}));
     if(JSON.stringify(resolvedLoras)!==JSON.stringify(store.get("loras")||[]))store.set("loras",resolvedLoras);
     const managed=[...(data.suggested?.managed_loras||[])];
-    if(managed.length){const loras=[...(store.get("loras")||[])];let changed=false;managed.forEach(name=>{const strength=/cinematic_movie_still/i.test(name)?.8:1;let item=loras.find(row=>row.name===name);if(!item){item={name,strength_model:strength,strength_clip:strength,enabled:true,managed:true};loras.push(item);changed=true;}else if(item.enabled===false||!item.managed||Number(item.strength_model)!==strength||Number(item.strength_clip)!==strength){item.enabled=true;item.managed=true;item.strength_model=strength;item.strength_clip=strength;changed=true;}});if(changed)store.set("loras",loras);}
+    const dismissed=new Set((store.get("dismissed_managed_loras")||[]).map(normalizedModelName));
+    if(managed.length){
+      const loras=(store.get("loras")||[]).map(item=>({...item}));let changed=false;
+      managed.forEach(name=>{
+        const normalized=normalizedModelName(name);
+        const item=loras.find(row=>normalizedModelName(row.name)===normalized);
+        if(!item&&!dismissed.has(normalized)){
+          const strength=/cinematic_movie_still/i.test(name)?.8:1;
+          loras.push({name,strength_model:strength,strength_clip:strength,enabled:true,managed:true});changed=true;
+        }else if(item&&!item.managed&&!dismissed.has(normalized)){
+          item.managed=true;changed=true;
+        }
+      });
+      if(changed)store.set("loras",loras);
+    }
     setOptions(styleSelect,[{label:"No style — use prompt only",value:""},...models.styles.map(item=>({label:item.label,value:item.value}))],store.get("cinematic_style")||"");renderStyleDetails();
     setOptions(sampler,data.samplers,store.get("sampler"));setOptions(scheduler,data.schedulers,store.get("scheduler"));
     setOptions(refineSampler,data.samplers,store.get("refinement.sampler"));setOptions(refineScheduler,data.schedulers,store.get("refinement.scheduler"));renderMode();

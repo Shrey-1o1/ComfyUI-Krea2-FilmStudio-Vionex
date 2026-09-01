@@ -74,6 +74,7 @@ export function parseState(raw) {
       };
       value.stats = {images_generated:0,renders_completed:0,total_render_ms:0,last_render_ms:0,last_batch:0,last_completed_at:"",...(value.stats || {})};
     }
+    value.dismissed_managed_loras = Array.isArray(value.dismissed_managed_loras) ? value.dismissed_managed_loras : [];
     value.enhancer = {...(value.enhancer || {}),enabled:false};
     return value;
   } catch (_) { return {}; }

@@ -316,6 +316,10 @@ def parse_config(raw: str, *, need_model: bool, need_clip: bool, need_vae: bool,
         data["vae"] = _filename("vae", data.get("vae", ""), "KREA VAE")
 
     loras: list[LoraSpec] = []
+    dismissed_managed_loras = data.get("dismissed_managed_loras") or []
+    if not isinstance(dismissed_managed_loras, list):
+        raise ValueError("dismissed_managed_loras must be a list.")
+    data["dismissed_managed_loras"] = [str(name) for name in dismissed_managed_loras if str(name).strip()]
     raw_loras = data.get("loras") or []
     if not isinstance(raw_loras, list):
         raise ValueError("loras must be a list.")

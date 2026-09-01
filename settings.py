@@ -81,6 +81,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "weight_dtype": "default",
     "clip_device": "default",
     "loras": [],
+    "dismissed_managed_loras": [],
     "advanced": False,
     "auto_save": True,
     "save_path": "",
